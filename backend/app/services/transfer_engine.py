@@ -30,6 +30,14 @@ from app.services.planner import ARCHIVE, COPY, DELETE, MKDIR, SKIP, UPDATE
 
 TMP_SUFFIX = ".__nas_sync_tmp"
 
+# ftplib transfers in 8 KB blocks by default, which badly caps throughput over a
+# LAN. 1 MiB blocks speed up copies substantially with no safety trade-off.
+BLOCKSIZE = 1024 * 1024
+
+# How often (seconds) to persist live run progress so the UI shows movement
+# mid-run; without this the run counters only update when the whole job finishes.
+PROGRESS_FLUSH_SECONDS = 2.0
+
 _FTP_ERRORS = ftplib.all_errors
 _RETRYABLE = (OSError,) + _FTP_ERRORS
 
@@ -98,11 +106,11 @@ def _transfer_one(
     os.close(fd)
     try:
         with open(local, "wb") as fh:
-            source_ftp.retrbinary(f"RETR {src_abs}", fh.write)
+            source_ftp.retrbinary(f"RETR {src_abs}", fh.write, BLOCKSIZE)
         size = os.path.getsize(local)
 
         with open(local, "rb") as fh:
-            dest_ftp.storbinary(f"STOR {tmp_remote}", fh)
+            dest_ftp.storbinary(f"STOR {tmp_remote}", fh, BLOCKSIZE)
 
         ok, msg = verifier.verify(
             level=level,
@@ -187,6 +195,27 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
     # Source files confirmed at the destination (safe to delete for move jobs).
     verified: list[tuple[str, str, int]] = []  # (abs_path, rel_path, size)
 
+    last_flush = time.monotonic()
+
+    def flush_progress(force: bool = False) -> None:
+        """Persist live counters so a polling UI (separate session) sees progress.
+
+        Time-throttled so a job of many small files does not commit per file.
+        """
+        nonlocal last_flush
+        now = time.monotonic()
+        if not force and now - last_flush < PROGRESS_FLUSH_SECONDS:
+            return
+        run.files_scanned = scanned
+        run.files_copied = copied
+        run.files_updated = updated
+        run.files_skipped = skipped
+        run.files_failed = failed
+        run.files_deleted = deleted
+        run.bytes_transferred = bytes_transferred
+        db.commit()
+        last_flush = now
+
     try:
         ctx = jobs_runner.prepare_for_job(db, job)
         plan = ctx.plan
@@ -251,6 +280,8 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
                         _log_item(db, run, action=DELETE, status="pending",
                                   destination=item.destination_path, size=item.size,
                                   message="blocked by safety settings (manual approval / limit)")
+
+                flush_progress()
 
             # Move workflow: queue or perform source deletion for verified files.
             if job.job_type == "move":
