@@ -1,18 +1,24 @@
 """Post-transfer verification (FR-007/008).
 
+Files are streamed source -> destination with no local copy, so verification
+compares against ``source_sha256`` (the digest computed from the source bytes as
+they streamed) rather than re-hashing a local file.
+
 Levels:
   1 Basic              - destination exists and size matches.
   2 Timestamp + Size   - size matches (timestamp preserved separately via MFMT).
-  3 Checksum if avail. - try a server-side hash; fall back to Level 2.
-  4 Download and Hash  - SHA-256 of the source bytes vs the re-downloaded file.
+  3 Checksum if avail. - compare a server-side SHA-256 of the destination to the
+                         streamed source SHA-256; fall back to size if the server
+                         has no SHA-256 command.
+  4 Download and Hash  - re-download the destination and compare its SHA-256 to
+                         the streamed source SHA-256.
 """
 from __future__ import annotations
 
 import ftplib
 import hashlib
-import io
 
-_HASH_COMMANDS = ("XSHA256", "XSHA1", "XMD5")
+_BLOCKSIZE = 1024 * 1024
 
 
 def verify(
@@ -21,9 +27,13 @@ def verify(
     dest_ftp: ftplib.FTP,
     remote_path: str,
     expected_size: int,
-    local_source_path: str | None = None,
+    source_sha256: str | None = None,
 ) -> tuple[bool, str]:
-    """Verify an uploaded file. Returns ``(ok, message)``."""
+    """Verify an uploaded file. Returns ``(ok, message)``.
+
+    ``source_sha256`` is the digest of the source bytes computed while streaming
+    (present for levels >= 3); there is no local copy of the file to re-hash.
+    """
     try:
         actual_size = dest_ftp.size(remote_path)
     except ftplib.all_errors as exc:
@@ -36,47 +46,28 @@ def verify(
         return True, "verified: size"
 
     if level == 3:
-        digest = _server_hash(dest_ftp, remote_path)
-        if digest is not None and local_source_path is not None:
-            local = _file_hash(local_source_path, digest[0])
-            if local is not None:
-                ok = local.lower() == digest[1].lower()
-                return ok, f"verified: {digest[0]} {'match' if ok else 'MISMATCH'}"
-        return True, "verified: size (checksum unsupported, level 3 fell back)"
+        dest_digest = _server_sha256(dest_ftp, remote_path)
+        if dest_digest is not None and source_sha256 is not None:
+            ok = dest_digest.lower() == source_sha256.lower()
+            return ok, f"verified: sha256 {'match' if ok else 'MISMATCH'}"
+        return True, "verified: size (server checksum unavailable, level 3 fell back)"
 
-    # Level 4: download the destination and compare SHA-256 with the source bytes.
-    if local_source_path is None:
-        return True, "verified: size (no source copy for hashing)"
-    buf = io.BytesIO()
+    # Level 4: re-download the destination and compare SHA-256 with the source.
+    if source_sha256 is None:
+        return True, "verified: size (no source hash)"
+    h = hashlib.sha256()
     try:
-        dest_ftp.retrbinary(f"RETR {remote_path}", buf.write)
+        dest_ftp.retrbinary(f"RETR {remote_path}", h.update, _BLOCKSIZE)
     except ftplib.all_errors as exc:
         return False, f"verify: cannot re-download destination ({exc})"
-    dest_digest = hashlib.sha256(buf.getvalue()).hexdigest()
-    src_digest = _file_hash(local_source_path, "sha256")
-    ok = src_digest == dest_digest
+    ok = h.hexdigest() == source_sha256
     return ok, f"verified: sha256 {'match' if ok else 'MISMATCH'}"
 
 
-def _server_hash(ftp: ftplib.FTP, path: str) -> tuple[str, str] | None:
-    """Best-effort server-side hash. Returns (algorithm, hexdigest) or None."""
-    for cmd in _HASH_COMMANDS:
-        try:
-            resp = ftp.sendcmd(f"{cmd} {path}")
-            token = resp.strip().split()[-1]
-            algo = {"XSHA256": "sha256", "XSHA1": "sha1", "XMD5": "md5"}[cmd]
-            return algo, token
-        except ftplib.all_errors:
-            continue
-    return None
-
-
-def _file_hash(path: str, algo: str) -> str | None:
+def _server_sha256(ftp: ftplib.FTP, path: str) -> str | None:
+    """Best-effort server-side SHA-256 (XSHA256). Returns the hexdigest or None."""
     try:
-        h = hashlib.new(algo)
-    except (ValueError, TypeError):
+        resp = ftp.sendcmd(f"XSHA256 {path}")
+    except ftplib.all_errors:
         return None
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return resp.strip().split()[-1]

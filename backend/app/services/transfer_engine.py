@@ -15,9 +15,8 @@ safety is prioritised over speed (NFR-002).
 from __future__ import annotations
 
 import ftplib
-import os
+import hashlib
 import posixpath
-import tempfile
 import threading
 import time
 
@@ -102,42 +101,58 @@ def _transfer_one(
     ensure_dir(dest_ftp, posixpath.dirname(dst_abs))
     tmp_remote = dst_abs + TMP_SUFFIX
 
-    fd, local = tempfile.mkstemp(prefix="nassync_")
-    os.close(fd)
+    # Stream the source straight to the destination, with both data channels live
+    # at once. The old code spooled the whole file to a local temp first, which
+    # (a) left the destination connection idle for the entire download - large
+    # files then died with "broken pipe" when the server dropped the idle socket -
+    # and (b) wrote every byte through the app host's disk. Streaming removes both
+    # and roughly halves per-file time. We still STOR to a temp name, verify, then
+    # rename into place, so a partial transfer never exposes a corrupt final file.
+    hasher = hashlib.sha256() if level >= 3 else None
+    size = 0
+
+    def _pump(chunk: bytes) -> None:
+        nonlocal size
+        conn.sendall(chunk)
+        size += len(chunk)
+        if hasher is not None:
+            hasher.update(chunk)
+
+    dest_ftp.voidcmd("TYPE I")
+    conn = dest_ftp.transfercmd(f"STOR {tmp_remote}")
     try:
-        with open(local, "wb") as fh:
-            source_ftp.retrbinary(f"RETR {src_abs}", fh.write, BLOCKSIZE)
-        size = os.path.getsize(local)
-
-        with open(local, "rb") as fh:
-            dest_ftp.storbinary(f"STOR {tmp_remote}", fh, BLOCKSIZE)
-
-        ok, msg = verifier.verify(
-            level=level,
-            dest_ftp=dest_ftp,
-            remote_path=tmp_remote,
-            expected_size=size,
-            local_source_path=local,
-        )
-        if not ok:
-            _safe_delete(dest_ftp, tmp_remote)
-            raise TransferError(msg)
-
-        if preserve_ts and source_mtime is not None:
-            try:
-                dest_ftp.sendcmd(f"MFMT {source_mtime.strftime('%Y%m%d%H%M%S')} {tmp_remote}")
-            except _FTP_ERRORS:
-                pass  # server doesn't support MFMT; not fatal
-
-        # Atomically replace the final file.
-        _safe_delete(dest_ftp, dst_abs)
-        dest_ftp.rename(tmp_remote, dst_abs)
-        return size, msg
-    finally:
+        source_ftp.retrbinary(f"RETR {src_abs}", _pump, BLOCKSIZE)
+    except Exception:
+        conn.close()
         try:
-            os.remove(local)
-        except OSError:
+            dest_ftp.voidresp()  # drain the aborted STOR so the connection stays usable
+        except _FTP_ERRORS:
             pass
+        raise
+    conn.close()
+    dest_ftp.voidresp()  # surfaces destination-side STOR errors (e.g. quota)
+
+    ok, msg = verifier.verify(
+        level=level,
+        dest_ftp=dest_ftp,
+        remote_path=tmp_remote,
+        expected_size=size,
+        source_sha256=hasher.hexdigest() if hasher is not None else None,
+    )
+    if not ok:
+        _safe_delete(dest_ftp, tmp_remote)
+        raise TransferError(msg)
+
+    if preserve_ts and source_mtime is not None:
+        try:
+            dest_ftp.sendcmd(f"MFMT {source_mtime.strftime('%Y%m%d%H%M%S')} {tmp_remote}")
+        except _FTP_ERRORS:
+            pass  # server doesn't support MFMT; not fatal
+
+    # Atomically replace the final file.
+    _safe_delete(dest_ftp, dst_abs)
+    dest_ftp.rename(tmp_remote, dst_abs)
+    return size, msg
 
 
 def _with_retry(fn, retry_count: int, retry_delay: int):
