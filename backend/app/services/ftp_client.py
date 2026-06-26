@@ -91,6 +91,11 @@ class FtpClient:
         ftp.set_pasv(self.passive_mode)
         return ftp
 
+    def connect(self) -> ftplib.FTP:
+        """Open and log in, returning a connection the caller is responsible for
+        closing. Used by the transfer engine, which reconnects on demand."""
+        return self._open()
+
     @contextmanager
     def connection(self) -> Iterator[ftplib.FTP]:
         ftp = self._open()

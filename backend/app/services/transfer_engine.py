@@ -155,7 +155,65 @@ def _transfer_one(
     return size, msg
 
 
-def _with_retry(fn, retry_count: int, retry_delay: int):
+class _Session:
+    """Holds the source + destination connections for a run and reconnects on
+    demand.
+
+    Consumer NAS FTP servers (and the NAT between containers) routinely drop the
+    control connection after a large transfer, so reusing a single connection for
+    the whole run made every file after the first fail with "broken pipe". We
+    check liveness before each file and reconnect if needed, so a drop costs one
+    reconnect instead of the rest of the queue.
+    """
+
+    def __init__(self, source_client, dest_client) -> None:
+        self._source_client = source_client
+        self._dest_client = dest_client
+        self.sftp: ftplib.FTP | None = None
+        self.dftp: ftplib.FTP | None = None
+
+    def open(self) -> None:
+        self.sftp = self._source_client.connect()
+        self.dftp = self._dest_client.connect()
+
+    def close(self) -> None:
+        for ftp in (self.sftp, self.dftp):
+            if ftp is None:
+                continue
+            try:
+                ftp.quit()
+            except Exception:  # noqa: BLE001 - best-effort teardown
+                try:
+                    ftp.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        self.sftp = self.dftp = None
+
+    def reconnect(self) -> None:
+        self.close()
+        self.open()
+
+    def ensure_alive(self) -> None:
+        """Cheap liveness probe; reconnect (with a few retries) if either side is
+        dead. Raises only if reconnection keeps failing (server truly down)."""
+        try:
+            self.sftp.voidcmd("NOOP")
+            self.dftp.voidcmd("NOOP")
+            return
+        except Exception:  # noqa: BLE001 - connection is stale; rebuild it
+            pass
+        last: Exception | None = None
+        for _ in range(3):
+            try:
+                self.reconnect()
+                return
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                time.sleep(1)
+        raise last if last else RuntimeError("cannot reconnect to FTP server")
+
+
+def _with_retry(fn, retry_count: int, retry_delay: int, session: "_Session | None" = None):
     last: Exception | None = None
     for attempt in range(retry_count + 1):
         try:
@@ -163,7 +221,15 @@ def _with_retry(fn, retry_count: int, retry_delay: int):
         except (TransferError, *_RETRYABLE) as exc:
             last = exc
             if attempt < retry_count:
-                time.sleep(retry_delay)
+                # A connection-level failure poisons the held connection for every
+                # later file, so rebuild it before retrying.
+                if session is not None:
+                    try:
+                        session.reconnect()
+                    except Exception:  # noqa: BLE001 - retry loop will surface it
+                        pass
+                if retry_delay:
+                    time.sleep(retry_delay)
     raise last if last else RuntimeError("transfer failed")
 
 
@@ -237,12 +303,15 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
         delete_total = plan.delete_count
         allow_deletes = _deletes_allowed(settings_row, delete_total)
 
-        with ctx.source_client.connection() as sftp, ctx.dest_client.connection() as dftp:
-            ensure_dir(dftp, ctx.dest_path)
+        session = _Session(ctx.source_client, ctx.dest_client)
+        session.open()
+        try:
+            ensure_dir(session.dftp, ctx.dest_path)
 
             for item in plan.items:
                 if item.action == MKDIR:
-                    ensure_dir(dftp, item.destination_path)
+                    session.ensure_alive()
+                    ensure_dir(session.dftp, item.destination_path)
                     _log_item(db, run, action=MKDIR, status="ok", destination=item.destination_path)
 
                 elif item.action in (COPY, UPDATE):
@@ -251,12 +320,17 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
                     entry = ctx.source_files.get(rel)
                     mtime = entry.modify if entry else None
                     try:
+                        # Make sure we start the file on a live connection - the
+                        # server may have dropped us after the previous transfer.
+                        session.ensure_alive()
                         size, msg = _with_retry(
                             lambda i=item, m=mtime: _transfer_one(
-                                sftp, dftp, i.source_path, i.destination_path, level, preserve, m
+                                session.sftp, session.dftp,
+                                i.source_path, i.destination_path, level, preserve, m
                             ),
                             retry_count,
                             retry_delay,
+                            session,
                         )
                         bytes_transferred += size
                         if item.action == COPY:
@@ -272,6 +346,12 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
                         _log_item(db, run, action=item.action, status="failed",
                                   source=item.source_path, destination=item.destination_path,
                                   size=item.size, message=str(exc))
+                        # The connection is likely poisoned; rebuild it so the next
+                        # file does not fail against a dead socket too.
+                        try:
+                            session.reconnect()
+                        except Exception:  # noqa: BLE001 - next file's ensure_alive retries
+                            pass
 
                 elif item.action == SKIP:
                     skipped += 1
@@ -286,7 +366,8 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
 
                 elif item.action == DELETE:
                     if allow_deletes:
-                        _safe_delete(dftp, item.destination_path)
+                        session.ensure_alive()
+                        _safe_delete(session.dftp, item.destination_path)
                         deleted += 1
                         _log_item(db, run, action=DELETE, status="ok",
                                   destination=item.destination_path, size=item.size,
@@ -300,7 +381,10 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
 
             # Move workflow: queue or perform source deletion for verified files.
             if job.job_type == "move":
-                deleted += _handle_move(db, run, job, sftp, verified, settings_row)
+                session.ensure_alive()
+                deleted += _handle_move(db, run, job, session.sftp, verified, settings_row)
+        finally:
+            session.close()
 
         run.status = "failed" if (failed and not (copied or updated)) else ("partial" if failed else "success")
         run.summary = (

@@ -129,6 +129,44 @@ def test_run_items_recorded(client, ftp_server):
     assert "copy" in actions and "mkdir" in actions
 
 
+def test_session_reconnects_when_connection_dies():
+    """A dropped connection (the cause of the 'broken pipe after one file' bug)
+    must be detected and rebuilt, not reused for every remaining file."""
+
+    class FakeFtp:
+        def __init__(self):
+            self.alive = True
+
+        def voidcmd(self, cmd):
+            if not self.alive:
+                raise OSError("connection dropped")
+            return "200 ok"
+
+        def quit(self):
+            pass
+
+        def close(self):
+            pass
+
+    class FakeClient:
+        def connect(self):
+            return FakeFtp()
+
+    session = transfer_engine._Session(FakeClient(), FakeClient())
+    session.open()
+    first_src, first_dst = session.sftp, session.dftp
+
+    # Server drops both connections after the previous transfer.
+    first_src.alive = False
+    first_dst.alive = False
+
+    session.ensure_alive()  # NOOP fails -> reconnect
+
+    assert session.sftp is not first_src
+    assert session.dftp is not first_dst
+    assert session.sftp.alive and session.dftp.alive
+
+
 @pytest.mark.parametrize("run_type", ["manual"])
 def test_overlap_guard_clears_after_run(client, ftp_server, run_type):
     src = _conn(client, ftp_server, "SRC", "/Media")
