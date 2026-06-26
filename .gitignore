@@ -1,0 +1,30 @@
+# Secrets / env
+.env
+deploy/nas.env
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# App data (never commit SQLite DB, generated keys, logs, backups)
+data/
+logs/
+backups/
+*.db
+*.sqlite
+*.sqlite3
+app_secret.key
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
