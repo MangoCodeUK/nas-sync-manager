@@ -106,6 +106,12 @@ class JobRun(Base):
     files_deleted: Mapped[int] = mapped_column(Integer, default=0)
     bytes_transferred: Mapped[int] = mapped_column(BigInteger, default=0)
 
+    # Live progress: totals known up-front from the plan, plus the file in flight,
+    # so a polling UI can show "X of Y" and what's currently transferring.
+    files_total: Mapped[int] = mapped_column(Integer, default=0)
+    bytes_total: Mapped[int] = mapped_column(BigInteger, default=0)
+    current_item: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 

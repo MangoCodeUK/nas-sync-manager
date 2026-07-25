@@ -23,6 +23,9 @@ class JobRunRead(BaseModel):
     files_failed: int
     files_deleted: int
     bytes_transferred: int
+    files_total: int = 0
+    bytes_total: int = 0
+    current_item: str | None = None
     summary: str | None
     error_message: str | None
     job_name: str | None = None

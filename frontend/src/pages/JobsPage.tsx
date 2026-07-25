@@ -36,6 +36,7 @@ export function JobsPage() {
   const [editor, setEditor] = useState<{ initial: JobInput; jobId: number | null } | null>(null);
   const [dryRun, setDryRun] = useState<{ name: string; plan: Plan } | null>(null);
   const [running, setRunning] = useState<{ name: string; run: JobRun } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
@@ -98,11 +99,23 @@ export function JobsPage() {
   async function doRun(j: Job) {
     setError(null);
     setDryRun(null);
+    setCancelling(false);
     try {
       const run = await api.runJob(j.id);
       setRunning({ name: j.name, run });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Run failed to start");
+    }
+  }
+
+  async function doCancel() {
+    if (!running) return;
+    setCancelling(true);
+    try {
+      await api.cancelJob(running.run.job_id);
+    } catch (e) {
+      setCancelling(false);
+      setError(e instanceof ApiError ? e.message : "Cancel failed");
     }
   }
 
@@ -234,7 +247,14 @@ export function JobsPage() {
             </table>
           )}
 
-          {running && <RunStatus name={running.name} run={running.run} />}
+          {running && (
+            <RunStatus
+              name={running.name}
+              run={running.run}
+              onCancel={doCancel}
+              cancelling={cancelling}
+            />
+          )}
 
           {dryRun && (
             <div className="dryrun-panel">

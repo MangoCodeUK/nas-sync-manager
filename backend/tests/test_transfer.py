@@ -74,6 +74,47 @@ def test_copy_job_lands_files_and_cleans_temp(client, ftp_server):
     assert _tmp_files(root) == []
 
 
+def test_run_records_progress_totals(client, ftp_server):
+    """The plan totals + live-progress bookkeeping land on the run so the UI can
+    show "X of Y"."""
+    src = _conn(client, ftp_server, "SRC", "/Media")
+    dst = _conn(client, ftp_server, "DST", "/Documents")
+    job = _job(client, src, dst)
+    with SessionLocal() as db:
+        run = transfer_engine.run_sync(db, db.get(SyncJob, job))
+        assert run.files_total == 2  # two files planned to transfer
+        assert run.bytes_total == 80  # 30 + 50
+        assert run.bytes_transferred == 80
+        assert run.current_item is None  # cleared when the run ends
+
+
+def test_request_cancel_only_when_running():
+    job_id = 987654
+    assert transfer_engine.request_cancel(job_id) is False  # not running
+    transfer_engine._mark(job_id)
+    try:
+        assert transfer_engine.request_cancel(job_id) is True
+        assert transfer_engine.is_cancelled(job_id) is True
+    finally:
+        transfer_engine._unmark(job_id)
+        transfer_engine._clear_cancel(job_id)
+    assert transfer_engine.is_cancelled(job_id) is False
+
+
+def test_cancel_stops_run(client, ftp_server):
+    """A cancel requested before the first file boundary stops the run cleanly."""
+    src = _conn(client, ftp_server, "SRC", "/Media")
+    dst = _conn(client, ftp_server, "DST", "/Documents")
+    job = _job(client, src, dst)
+    transfer_engine._cancel.add(job)  # pre-arm; run stops at the first loop check
+    try:
+        result = _run(job)
+    finally:
+        transfer_engine._cancel.discard(job)
+    assert result["status"] == "cancelled"
+    assert result["copied"] == 0
+
+
 def test_rerun_skips_unchanged(client, ftp_server):
     src = _conn(client, ftp_server, "SRC", "/Media")
     dst = _conn(client, ftp_server, "DST", "/Documents")

@@ -133,6 +133,8 @@ export const api = {
     request<{ run: JobRun; plan: Plan }>(`/api/jobs/${id}/dry-run`, { method: "POST" }),
   runJob: (id: number) =>
     request<JobRun>(`/api/jobs/${id}/run`, { method: "POST" }),
+  cancelJob: (id: number) =>
+    request<{ status: string; job_id: number }>(`/api/jobs/${id}/cancel`, { method: "POST" }),
   listRuns: (id: number) => request<JobRun[]>(`/api/jobs/${id}/runs`),
   getRun: (runId: number) => request<JobRun>(`/api/jobs/runs/${runId}`),
   runItems: (runId: number) => request<RunItem[]>(`/api/jobs/runs/${runId}/items`),
@@ -299,6 +301,9 @@ export interface JobRun {
   files_failed: number;
   files_deleted: number;
   bytes_transferred: number;
+  files_total: number;
+  bytes_total: number;
+  current_item: string | null;
   summary: string | null;
   error_message: string | null;
   job_name?: string | null;

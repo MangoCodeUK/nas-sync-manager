@@ -75,7 +75,7 @@ class FtpClient:
             else:
                 ftp = ftplib.FTP(timeout=self.timeout_seconds)
             ftp.connect(self.host, self.port)
-        except (OSError, ftplib.all_errors) as exc:  # type: ignore[misc]
+        except ftplib.all_errors as exc:  # all_errors already includes OSError
             raise FtpError(f"Cannot reach {self.host}:{self.port} ({exc})") from exc
 
         try:

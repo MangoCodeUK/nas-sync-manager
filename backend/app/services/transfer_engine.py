@@ -49,8 +49,13 @@ class TransferError(Exception):
     """A single-file transfer failed (verification or transfer)."""
 
 
-# --- overlap guard (FR-011) -------------------------------------------------
+class Cancelled(Exception):
+    """Raised to abort a run when the user has requested cancellation."""
+
+
+# --- overlap guard (FR-011) + cooperative cancellation ----------------------
 _running: set[int] = set()
+_cancel: set[int] = set()
 _lock = threading.Lock()
 
 
@@ -67,6 +72,26 @@ def _mark(job_id: int) -> None:
 def _unmark(job_id: int) -> None:
     with _lock:
         _running.discard(job_id)
+
+
+def request_cancel(job_id: int) -> bool:
+    """Ask a running job to stop - at the next file boundary, or mid-file for the
+    file currently streaming. Returns True if the job was actually running."""
+    with _lock:
+        if job_id in _running:
+            _cancel.add(job_id)
+            return True
+        return False
+
+
+def is_cancelled(job_id: int) -> bool:
+    with _lock:
+        return job_id in _cancel
+
+
+def _clear_cancel(job_id: int) -> None:
+    with _lock:
+        _cancel.discard(job_id)
 
 
 # --- low-level FTP helpers --------------------------------------------------
@@ -90,14 +115,16 @@ def _safe_delete(ftp: ftplib.FTP, path: str) -> None:
 
 
 def _transfer_one(
-    source_ftp: ftplib.FTP,
-    dest_ftp: ftplib.FTP,
+    session: "_Session",
     src_abs: str,
     dst_abs: str,
     level: int,
     preserve_ts: bool,
     source_mtime,
+    cancel_check=None,
+    on_bytes=None,
 ) -> tuple[int, str]:
+    dest_ftp = session.dftp
     ensure_dir(dest_ftp, posixpath.dirname(dst_abs))
     tmp_remote = dst_abs + TMP_SUFFIX
 
@@ -113,15 +140,19 @@ def _transfer_one(
 
     def _pump(chunk: bytes) -> None:
         nonlocal size
+        if cancel_check is not None and cancel_check():
+            raise Cancelled()
         conn.sendall(chunk)
         size += len(chunk)
         if hasher is not None:
             hasher.update(chunk)
+        if on_bytes is not None:
+            on_bytes(size)
 
     dest_ftp.voidcmd("TYPE I")
     conn = dest_ftp.transfercmd(f"STOR {tmp_remote}")
     try:
-        source_ftp.retrbinary(f"RETR {src_abs}", _pump, BLOCKSIZE)
+        session.sftp.retrbinary(f"RETR {src_abs}", _pump, BLOCKSIZE)
     except Exception:
         conn.close()
         try:
@@ -132,26 +163,39 @@ def _transfer_one(
     conn.close()
     dest_ftp.voidresp()  # surfaces destination-side STOR errors (e.g. quota)
 
+    # The upload is committed on the server now (226 received). Some FTP servers -
+    # e.g. SmbFTPD on older TerraMaster units - drop the control connection the
+    # moment a STOR finishes (and again after a handful of commands), so EVERY
+    # post-upload command (SIZE, MFMT, rename) must run on a freshly reconnected
+    # destination connection. Reconnecting is cheap on a LAN and harmless for
+    # well-behaved servers, so we always do it.
+    session.reconnect_dest()
+    verify_ftp = session.dftp
+    verify_ftp.voidcmd("TYPE I")  # a fresh connection defaults to ASCII; SIZE/RETR need binary
     ok, msg = verifier.verify(
         level=level,
-        dest_ftp=dest_ftp,
+        dest_ftp=verify_ftp,
         remote_path=tmp_remote,
         expected_size=size,
         source_sha256=hasher.hexdigest() if hasher is not None else None,
     )
     if not ok:
-        _safe_delete(dest_ftp, tmp_remote)
+        session.reconnect_dest()
+        _safe_delete(session.dftp, tmp_remote)
         raise TransferError(msg)
 
     if preserve_ts and source_mtime is not None:
         try:
-            dest_ftp.sendcmd(f"MFMT {source_mtime.strftime('%Y%m%d%H%M%S')} {tmp_remote}")
+            verify_ftp.sendcmd(f"MFMT {source_mtime.strftime('%Y%m%d%H%M%S')} {tmp_remote}")
         except _FTP_ERRORS:
-            pass  # server doesn't support MFMT; not fatal
+            pass  # server doesn't support MFMT (or dropped us); not fatal
 
-    # Atomically replace the final file.
-    _safe_delete(dest_ftp, dst_abs)
-    dest_ftp.rename(tmp_remote, dst_abs)
+    # Atomically replace the final file. A fresh connection with the rename as its
+    # first operations stays well inside servers that drop the control connection
+    # after only a few commands.
+    session.reconnect_dest()
+    _safe_delete(session.dftp, dst_abs)
+    session.dftp.rename(tmp_remote, dst_abs)
     return size, msg
 
 
@@ -192,6 +236,19 @@ class _Session:
     def reconnect(self) -> None:
         self.close()
         self.open()
+
+    def reconnect_dest(self) -> None:
+        """Rebuild only the destination connection. Used after every upload for
+        servers that drop the control connection once a STOR completes."""
+        if self.dftp is not None:
+            try:
+                self.dftp.quit()
+            except Exception:  # noqa: BLE001 - best-effort teardown
+                try:
+                    self.dftp.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        self.dftp = self._dest_client.connect()
 
     def ensure_alive(self) -> None:
         """Cheap liveness probe; reconnect (with a few retries) if either side is
@@ -271,8 +328,11 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
     level = job.verification_level
 
     copied = updated = skipped = failed = deleted = 0
-    bytes_transferred = 0
+    bytes_transferred = 0  # bytes of fully-completed files
+    inflight = 0  # bytes of the file currently streaming (for a live progress bar)
     scanned = 0
+    current: str | None = None
+    cancelled = False
     # Source files confirmed at the destination (safe to delete for move jobs).
     verified: list[tuple[str, str, int]] = []  # (abs_path, rel_path, size)
 
@@ -293,7 +353,8 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
         run.files_skipped = skipped
         run.files_failed = failed
         run.files_deleted = deleted
-        run.bytes_transferred = bytes_transferred
+        run.bytes_transferred = bytes_transferred + inflight
+        run.current_item = current
         db.commit()
         last_flush = now
 
@@ -303,12 +364,21 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
         delete_total = plan.delete_count
         allow_deletes = _deletes_allowed(settings_row, delete_total)
 
+        # Persist plan totals up-front so the UI can show "X of Y" immediately.
+        run.files_total = plan.copy_count + plan.update_count
+        run.bytes_total = plan.transfer_bytes
+        db.commit()
+
         session = _Session(ctx.source_client, ctx.dest_client)
         session.open()
         try:
             ensure_dir(session.dftp, ctx.dest_path)
 
             for item in plan.items:
+                if is_cancelled(job.id):
+                    cancelled = True
+                    break
+
                 if item.action == MKDIR:
                     session.ensure_alive()
                     ensure_dir(session.dftp, item.destination_path)
@@ -319,20 +389,31 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
                     rel = posixpath.relpath(item.source_path, ctx.source_path)
                     entry = ctx.source_files.get(rel)
                     mtime = entry.modify if entry else None
+                    current = rel
+                    inflight = 0
+                    flush_progress(force=True)  # show the file the moment it starts
+
+                    def _tick(n: int) -> None:
+                        nonlocal inflight
+                        inflight = n
+                        flush_progress()  # throttled: live bytes during a big file
+
                     try:
                         # Make sure we start the file on a live connection - the
                         # server may have dropped us after the previous transfer.
                         session.ensure_alive()
                         size, msg = _with_retry(
                             lambda i=item, m=mtime: _transfer_one(
-                                session.sftp, session.dftp,
-                                i.source_path, i.destination_path, level, preserve, m
+                                session, i.source_path, i.destination_path, level, preserve, m,
+                                cancel_check=lambda: is_cancelled(job.id),
+                                on_bytes=_tick,
                             ),
                             retry_count,
                             retry_delay,
                             session,
                         )
                         bytes_transferred += size
+                        inflight = 0
                         if item.action == COPY:
                             copied += 1
                         else:
@@ -341,7 +422,12 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
                         _log_item(db, run, action=item.action, status="ok",
                                   source=item.source_path, destination=item.destination_path,
                                   size=size, message=msg)
+                    except Cancelled:
+                        inflight = 0
+                        cancelled = True
+                        break
                     except Exception as exc:  # noqa: BLE001 - record and continue
+                        inflight = 0
                         failed += 1
                         _log_item(db, run, action=item.action, status="failed",
                                   source=item.source_path, destination=item.destination_path,
@@ -379,22 +465,33 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
 
                 flush_progress()
 
-            # Move workflow: queue or perform source deletion for verified files.
-            if job.job_type == "move":
+            # Move workflow: queue or perform source deletion for verified files
+            # (skip it when the run was cancelled - the picture is incomplete).
+            if job.job_type == "move" and not cancelled:
                 session.ensure_alive()
                 deleted += _handle_move(db, run, job, session.sftp, verified, settings_row)
         finally:
             session.close()
 
-        run.status = "failed" if (failed and not (copied or updated)) else ("partial" if failed else "success")
+        if cancelled:
+            run.status = "cancelled"
+        elif failed and not (copied or updated):
+            run.status = "failed"
+        elif failed:
+            run.status = "partial"
+        else:
+            run.status = "success"
         run.summary = (
             f"{copied} copied, {updated} updated, {skipped} skipped, "
             f"{deleted} deleted, {failed} failed"
+            + (" (cancelled)" if cancelled else "")
         )
     except Exception as exc:  # noqa: BLE001 - whole-run failure
         run.status = "failed"
         run.error_message = str(exc)
 
+    inflight = 0
+    current = None
     run.files_scanned = scanned
     run.files_copied = copied
     run.files_updated = updated
@@ -402,6 +499,7 @@ def _do_work(db: Session, run: JobRun, job: SyncJob) -> None:
     run.files_failed = failed
     run.files_deleted = deleted
     run.bytes_transferred = bytes_transferred
+    run.current_item = None
     run.completed_at = utcnow()
     run.duration_seconds = round(time.monotonic() - started, 3)
 
@@ -490,6 +588,7 @@ def run_sync(db: Session, job: SyncJob, run_type: str = "manual") -> JobRun:
         return run
     finally:
         _unmark(job.id)
+        _clear_cancel(job.id)
 
 
 def begin(db: Session, job: SyncJob, run_type: str = "manual") -> JobRun:
@@ -513,5 +612,6 @@ def execute_async(run_id: int, job_id: int) -> None:
                     _do_work(db, run, job)
         finally:
             _unmark(job_id)
+            _clear_cancel(job_id)
 
     threading.Thread(target=_thread, daemon=True).start()

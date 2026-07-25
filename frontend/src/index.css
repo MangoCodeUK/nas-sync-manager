@@ -557,6 +557,56 @@ td {
   overflow: auto;
 }
 
+.chip-warn {
+  color: #f0b429;
+  border-color: #f0b429;
+}
+
+.progress {
+  height: 10px;
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 10px 0 6px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.progress-fill.indeterminate {
+  width: 35% !important;
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
+.run-current {
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-all;
+  margin: 4px 0;
+}
+
+.run-current .mono {
+  color: var(--muted);
+}
+
+.run-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .row-delete td {
   color: var(--bad);
 }

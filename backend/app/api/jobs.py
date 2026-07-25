@@ -135,6 +135,17 @@ def run_now(job_id: int, db: Session = Depends(get_db)):
     return JobRunRead.model_validate(run)
 
 
+@router.post("/{job_id}/cancel", status_code=202)
+def cancel_run(job_id: int, db: Session = Depends(get_db)):
+    """Ask a running job to stop (cooperative - stops at the next file, or mid-file
+    for the one currently streaming)."""
+    job = _get_or_404(db, job_id)
+    if not transfer_engine.request_cancel(job.id):
+        raise HTTPException(status_code=409, detail="Job is not running")
+    audit.record(db, "job.cancel_requested", detail=job.name)
+    return {"status": "cancelling", "job_id": job.id}
+
+
 @router.get("/{job_id}/runs", response_model=list[JobRunRead])
 def list_runs(job_id: int, limit: int = 50, db: Session = Depends(get_db)):
     _get_or_404(db, job_id)
