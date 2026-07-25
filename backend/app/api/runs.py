@@ -17,7 +17,12 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 def _with_job_name(db: Session, run: JobRun) -> JobRunRead:
     read = JobRunRead.model_validate(run)
     job = db.get(SyncJob, run.job_id)
-    read.job_name = job.name if job else None
+    if job:
+        read.job_name = job.name
+        src = job.source_connection.name if job.source_connection else "?"
+        dst = job.destination_connection.name if job.destination_connection else "?"
+        read.source_label = f"{src}:{job.source_path}"
+        read.destination_label = f"{dst}:{job.destination_path}"
     return read
 
 

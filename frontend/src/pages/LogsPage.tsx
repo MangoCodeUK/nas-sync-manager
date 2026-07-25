@@ -85,7 +85,14 @@ export function LogsPage() {
             {runs.map((r) => (
               <Fragment key={r.id}>
                 <tr>
-                  <td>{r.job_name ?? "-"}</td>
+                  <td>
+                    <strong>{r.job_name ?? "(deleted job)"}</strong>
+                    {r.source_label && (
+                      <div className="mono small muted">
+                        {r.source_label} → {r.destination_label}
+                      </div>
+                    )}
+                  </td>
                   <td>{r.run_type}</td>
                   <td className={STATUS_CLASS[r.status] ?? ""}>{r.status}</td>
                   <td className="small">{formatDateTime(r.started_at)}</td>

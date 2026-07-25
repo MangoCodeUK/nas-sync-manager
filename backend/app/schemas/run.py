@@ -29,6 +29,9 @@ class JobRunRead(BaseModel):
     summary: str | None
     error_message: str | None
     job_name: str | None = None
+    # What this run synced (from the job) so log rows are self-describing.
+    source_label: str | None = None
+    destination_label: str | None = None
 
 
 class JobRunItemRead(BaseModel):

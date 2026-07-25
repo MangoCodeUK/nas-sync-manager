@@ -56,6 +56,30 @@ export function JobsPage() {
     return () => clearTimeout(id);
   }, [running]);
 
+  // Surface ANY in-progress run - one started in another tab, a scheduled run, or
+  // still going after a page refresh - so its progress bar shows without needing to
+  // have clicked "Run now" in this tab. Idle-only; the poll above owns the active run.
+  useEffect(() => {
+    if (running && running.run.status === "running") return;
+    let stop = false;
+    const check = async () => {
+      try {
+        const rs = await api.runsLog({ status: "running" });
+        if (!stop && rs.length > 0) {
+          setRunning({ name: rs[0].job_name ?? "job", run: rs[0] });
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    check();
+    const id = setInterval(check, 4000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+  }, [running]);
+
   async function refresh() {
     const [conns, jobList] = await Promise.all([api.listConnections(), api.listJobs()]);
     setConnections(conns);
@@ -177,6 +201,15 @@ export function JobsPage() {
 
       {error && <p className="error-text">{error}</p>}
 
+      {running && (
+        <RunStatus
+          name={running.name}
+          run={running.run}
+          onCancel={doCancel}
+          cancelling={cancelling}
+        />
+      )}
+
       {editor ? (
         <JobEditor
           connections={connections}
@@ -245,15 +278,6 @@ export function JobsPage() {
                 ))}
               </tbody>
             </table>
-          )}
-
-          {running && (
-            <RunStatus
-              name={running.name}
-              run={running.run}
-              onCancel={doCancel}
-              cancelling={cancelling}
-            />
           )}
 
           {dryRun && (

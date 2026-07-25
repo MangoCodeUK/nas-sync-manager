@@ -307,6 +307,8 @@ export interface JobRun {
   summary: string | null;
   error_message: string | null;
   job_name?: string | null;
+  source_label?: string | null;
+  destination_label?: string | null;
 }
 
 export interface BrowseEntry {

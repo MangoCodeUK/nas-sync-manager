@@ -22,6 +22,9 @@ def test_runs_log_and_filters(client, ftp_server):
     runs = client.get("/api/runs").json()
     assert len(runs) >= 1
     assert runs[0]["job_name"] == "Copy Media"
+    # Each run is self-describing: what it synced (source -> destination).
+    assert runs[0]["source_label"] and runs[0]["destination_label"]
+    assert ":/Media" in runs[0]["source_label"]
 
     assert all(r["status"] == "success" for r in client.get("/api/runs", params={"status": "success"}).json())
     assert client.get("/api/runs", params={"status": "failed"}).json() == []
