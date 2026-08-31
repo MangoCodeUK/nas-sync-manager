@@ -55,6 +55,11 @@ const SCHEDULES = [
   ["cron", "Custom cron"],
 ] as const;
 
+// Recycle bins are a NAS artefact, not user data, and rsync will happily copy
+// (and mirror-delete) them. Prefilled rather than silently applied, so it is
+// visible and can be removed.
+const DEFAULT_RSYNC_EXCLUDES = ["#recycle/", "@Recycle/", "@eaDir/"].join("\n");
+
 const SCHEDULE_HINT: Record<string, string> = {
   interval: "Value = number of minutes (e.g. 30)",
   daily: "Value = time HH:MM (e.g. 02:30)",
@@ -83,6 +88,18 @@ export function JobEditor({
 
   function set<K extends keyof JobInput>(k: K, v: JobInput[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  function setTransport(next: JobInput["transport"]) {
+    setForm((f) => ({
+      ...f,
+      transport: next,
+      // Only ever fill a blank box - never overwrite what someone typed.
+      exclude_filters:
+        next === "rsync" && !(f.exclude_filters ?? "").trim()
+          ? DEFAULT_RSYNC_EXCLUDES
+          : f.exclude_filters,
+    }));
   }
 
   async function preview() {
@@ -147,7 +164,7 @@ export function JobEditor({
           <span>Transport</span>
           <select
             value={form.transport}
-            onChange={(e) => set("transport", e.target.value as JobInput["transport"])}
+            onChange={(e) => setTransport(e.target.value as JobInput["transport"])}
           >
             {TRANSPORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>

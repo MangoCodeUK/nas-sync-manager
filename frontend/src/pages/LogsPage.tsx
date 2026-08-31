@@ -111,6 +111,12 @@ export function LogsPage() {
                     <td colSpan={9}>
                       {r.summary && <p className="muted small">{r.summary}</p>}
                       {r.error_message && <p className="error-text small">{r.error_message}</p>}
+                      {r.safety_notes && (
+        <details className="safety-notes">
+          <summary>Safety checks performed</summary>
+          <pre>{r.safety_notes}</pre>
+        </details>
+      )}
                       <div className="plan-items">
                         <table>
                           <thead><tr><th>Action</th><th>Path</th><th>Status</th><th>Message</th></tr></thead>

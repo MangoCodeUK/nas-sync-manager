@@ -158,7 +158,7 @@ class RsyncProvider:
             deletions_planned=planned.delete_count,
             source_files=rsync_client.parse_regular_file_count(rehearsal.stdout),
             destination_files=(
-                rsync_client.count_files(destination, password) if is_destructive else None
+                _managed_file_count(destination, password, job) if is_destructive else None
             ),
             settings_row=settings_row,
             is_destructive=is_destructive,
@@ -222,6 +222,14 @@ class RsyncProvider:
         if result.returncode != 0:
             run.status = "failed"
             run.error_message = _explain(result)
+        elif report.veto_reason:
+            # The transfer worked, but the job did not do everything it was asked
+            # to. Reporting that as plain "success" with a quiet 0-deleted count
+            # is how a refused deletion looks like a broken feature: the reason
+            # was recorded but never shown. It is an outcome, so it is surfaced
+            # like one.
+            run.status = "partial"
+            run.error_message = report.veto_reason
         else:
             run.status = "success"
 
@@ -232,6 +240,11 @@ class RsyncProvider:
         run.summary = (
             f"rsync ({job.job_type}): {run.files_copied} copied, {run.files_updated} updated, "
             f"{run.files_deleted} deleted, {run.files_skipped} unchanged"
+            + (
+                f" - {report.deletions_planned} deletion(s) refused by a safety check"
+                if report.veto_reason and report.deletions_planned
+                else ""
+            )
         )
         run.completed_at = utcnow()
         db.commit()
@@ -459,3 +472,23 @@ def _record_items(db, run, plan) -> None:
             )
         )
     db.commit()
+
+
+def _managed_file_count(endpoint, password, job) -> int | None:
+    """How many destination files this job actually manages.
+
+    Counting everything present would include files the job's own filters
+    exclude - a #recycle folder, say - which inflates the denominator and makes
+    the proportional guard fire on a percentage that was never real.
+    """
+    from app.services.planner import is_filtered, parse_filters
+    from app.services.rsync_client import list_files
+
+    listed = list_files(endpoint, password)
+    if listed is None:
+        return None
+    includes = parse_filters(getattr(job, "include_filters", None))
+    excludes = parse_filters(getattr(job, "exclude_filters", None))
+    if not includes and not excludes:
+        return len(listed)
+    return sum(1 for relative, _size in listed if not is_filtered(relative, includes, excludes))

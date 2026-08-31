@@ -23,6 +23,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Below this many destination files a percentage says nothing useful - on a
+# five-file folder one deletion is 20% - so the proportional cap stands down
+# and the absolute limit governs. Without this, the two guards conflict: a 10%
+# cap forbids every deletion on a small folder however high the count limit is.
+PERCENT_FLOOR = 20
+
 
 @dataclass
 class SafetyReport:
@@ -135,7 +141,18 @@ def evaluate(
 
     # --- 3. proportional limit ----------------------------------------------
     percent_cap = getattr(settings_row, "max_delete_percent", 100) or 100
-    if destination_files:
+    if destination_files and destination_files < PERCENT_FLOOR:
+        # A percentage is meaningless on a small folder: with five files, any
+        # single deletion is 20%, so a 10% cap would forbid every deletion no
+        # matter how high the absolute limit was set - one guard silently
+        # disabling the other. Below the floor the absolute limit governs, which
+        # is the guard that actually says something useful at this size.
+        report.checks.append(
+            f"Destination holds {destination_files} file(s), below the {PERCENT_FLOOR}-file "
+            f"floor where a percentage is meaningful; the {percent_cap}% cap was not "
+            f"applied and the limit of {limit} governs."
+        )
+    elif destination_files:
         percent = deletions_planned * 100 / destination_files
         if percent > percent_cap:
             report.checks.append(
@@ -163,4 +180,4 @@ def evaluate(
     return report
 
 
-__all__ = ["SafetyReport", "evaluate"]
+__all__ = ["PERCENT_FLOOR", "SafetyReport", "evaluate"]

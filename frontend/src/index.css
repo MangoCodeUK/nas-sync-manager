@@ -744,3 +744,27 @@ td {
 .browse-transport p {
   margin: 8px 0 0;
 }
+
+/* Why a run did what it did - collapsed, because it only matters when a result
+   is surprising. Theme tokens only. */
+.safety-notes {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.safety-notes summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.safety-notes pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  white-space: pre-wrap;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}

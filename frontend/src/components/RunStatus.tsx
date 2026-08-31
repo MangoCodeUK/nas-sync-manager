@@ -96,6 +96,12 @@ export function RunStatus({
 
       {run.summary && !running && <p className="muted small">{run.summary}</p>}
       {run.error_message && <p className="error-text small">{run.error_message}</p>}
+      {run.safety_notes && (
+        <details className="safety-notes">
+          <summary>Safety checks performed</summary>
+          <pre>{run.safety_notes}</pre>
+        </details>
+      )}
     </div>
   );
 }

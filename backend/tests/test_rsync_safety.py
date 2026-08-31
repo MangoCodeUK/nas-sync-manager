@@ -202,3 +202,66 @@ def test_an_undeterminable_source_count_refuses_deletions():
     assert report.abort is False  # the transfer may proceed
     assert report.allow_deletes is False
     assert "could not be determined" in report.veto_reason
+
+
+# --- the two guards must not disable each other -----------------------------
+def test_a_small_destination_is_governed_by_the_count_not_the_percentage():
+    """The real-world failure this fixes.
+
+    A five-file folder with a 10% cap: every possible deletion is at least 20%,
+    so the percentage forbade what the raised absolute limit was meant to allow.
+    Raising the limit appeared to do nothing, and the run still said "success".
+    """
+    report = evaluate(
+        deletions_planned=2,
+        destination_files=5,
+        settings_row=settings(max_auto_destination_deletes=5, max_delete_percent=10),
+    )
+    assert report.allow_deletes is True
+    assert any("floor" in c for c in report.checks)
+
+
+def test_the_percentage_still_applies_once_the_destination_is_large_enough():
+    # Above the floor the proportional guard is meaningful again, and still bites.
+    report = evaluate(
+        deletions_planned=25,
+        destination_files=100,
+        settings_row=settings(max_auto_destination_deletes=1000, max_delete_percent=10),
+    )
+    assert report.allow_deletes is False
+    assert "25.0%" in report.veto_reason
+
+
+def test_the_absolute_limit_still_bites_below_the_floor():
+    # Standing the percentage down must not leave a small folder unguarded.
+    report = evaluate(
+        deletions_planned=9,
+        destination_files=10,
+        settings_row=settings(max_auto_destination_deletes=5, max_delete_percent=100),
+    )
+    assert report.allow_deletes is False
+    assert "limit of 5" in report.veto_reason
+
+
+def test_excluded_files_do_not_inflate_the_destination_count():
+    """#recycle held 8 of 13 files, making 2 deletions look like 15.4% not 40%."""
+    from types import SimpleNamespace as NS
+
+    from app.services import providers, rsync_client
+
+    listing = [(f"#recycle/junk{i}.txt", 10) for i in range(8)] + [
+        ("Test1.txt", 11),
+        ("Test2.txt", 0),
+        ("TestNEW.txt", 0),
+        ("Destination-Only.txt", 0),
+        ("Test3NASManager.txt", 0),
+    ]
+    original = rsync_client.list_files
+    rsync_client.list_files = lambda *a, **k: listing
+    try:
+        job_with = NS(include_filters=None, exclude_filters="#recycle/")
+        job_without = NS(include_filters=None, exclude_filters=None)
+        assert providers._managed_file_count(None, None, job_with) == 5
+        assert providers._managed_file_count(None, None, job_without) == 13
+    finally:
+        rsync_client.list_files = original
