@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # (Stage 1) and persisted to the .env file if not supplied here.
     app_secret: str | None = None
 
+    # --- rsync transport ---
+    # Where NAS shares are bind-mounted inside the container. A host path /X is
+    # mounted at <mount_root>/X, so the container path encodes the host path.
+    # See app/services/mounts.py and the volumes block in docker-compose.prod.yml.
+    mount_root: str = "/nas"
+
     # --- Behaviour defaults (overridable per-job / via Settings page later) ---
     timezone: str = "Europe/London"
 

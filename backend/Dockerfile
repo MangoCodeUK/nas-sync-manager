@@ -7,6 +7,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# rsync is the transfer engine for the rsync provider; openssh-client lets it use
+# SSH transport (rsync -e ssh) as an alternative to the daemon protocol. Installed
+# before the pip layer because these change far less often than requirements.txt.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends rsync openssh-client \
+ && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first for better layer caching.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

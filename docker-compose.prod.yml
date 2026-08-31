@@ -15,6 +15,23 @@ services:
       APP_SECRET: ${APP_SECRET:-}
     volumes:
       - nassync_data:/data
+      # --- NAS shares exposed to rsync jobs --------------------------------
+      # rsync cannot copy remote->remote, so the local end of every rsync job
+      # must be a real path inside this container. Each share below is one bind
+      # mount of the NAS's own storage.
+      #
+      # CONVENTION (app/services/mounts.py depends on it): a host path /X is
+      # mounted at /nas/X, so the container path always encodes the host path.
+      # Append ":ro" to make a share source-only - the kernel then makes writes
+      # impossible, whatever the app does.
+      #
+      # To expose another share: uncomment/add one line and redeploy. No code
+      # change, no migration. The app reports which shares are mounted and
+      # refuses jobs pointing outside them.
+      - /Volume1/RsyncTest:/nas/Volume1/RsyncTest
+      # - /Volume1/public/Films:/nas/Volume1/public/Films
+      # - /Volume1/public/TV Shows:/nas/Volume1/public/TV Shows
+      # - /Volume1/public/Photos:/nas/Volume1/public/Photos:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 30s

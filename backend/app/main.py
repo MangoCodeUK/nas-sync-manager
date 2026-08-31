@@ -17,6 +17,7 @@ from app.api import browse as browse_api
 from app.api import connections as connections_api
 from app.api import dashboard as dashboard_api
 from app.api import jobs as jobs_api
+from app.api import mounts as mounts_api
 from app.api import pending as pending_api
 from app.api import runs as runs_api
 from app.api import settings as settings_api
@@ -57,6 +58,7 @@ app.include_router(settings_api.router)
 app.include_router(connections_api.router)
 app.include_router(browse_api.router)
 app.include_router(jobs_api.router)
+app.include_router(mounts_api.router)
 app.include_router(pending_api.router)
 app.include_router(runs_api.router)
 app.include_router(dashboard_api.router)
