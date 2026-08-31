@@ -234,8 +234,9 @@ class RsyncProvider:
             run.status = "success"
 
         # --- 4. move: only ever after a clean, verified run ----------------
+        queued = 0
         if job.job_type == "move" and result.returncode == 0:
-            self._queue_source_deletions(db, run, job, source, destination, password)
+            queued = self._queue_source_deletions(db, run, job, source, destination, password) or 0
 
         run.summary = (
             f"rsync ({job.job_type}): {run.files_copied} copied, {run.files_updated} updated, "
@@ -245,6 +246,10 @@ class RsyncProvider:
                 if report.veto_reason and report.deletions_planned
                 else ""
             )
+            # Surfaced here rather than left to be discovered on the Pending
+            # Deletions page: a move that queued nothing looks identical to one
+            # that queued a hundred files unless the run says so.
+            + (f" - {queued} source file(s) awaiting approval" if queued else "")
         )
         run.completed_at = utcnow()
         db.commit()
@@ -315,8 +320,8 @@ class RsyncProvider:
                     approved=False,
                 )
             )
-        run.summary = (run.summary or "") + f" - {queued} source file(s) awaiting approval"
         db.commit()
+        return queued
 
 
 _PROVIDERS: dict[str, TransferProvider] = {
