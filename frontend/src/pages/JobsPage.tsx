@@ -233,6 +233,7 @@ export function JobsPage() {
                 <tr>
                   <th>Name</th>
                   <th>Type</th>
+                  <th>Via</th>
                   <th>Source &rarr; Destination</th>
                   <th>Schedule</th>
                   <th>Last run</th>
@@ -249,6 +250,9 @@ export function JobsPage() {
                       {!j.enabled && <span className="tag">disabled</span>}
                     </td>
                     <td>{j.job_type}</td>
+                    <td>
+                      <span className="tag">{j.transport}</span>
+                    </td>
                     <td className="mono small">
                       {j.source_connection_name}:{j.source_path}
                       <br />→ {j.destination_connection_name}:{j.destination_path}

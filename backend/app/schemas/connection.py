@@ -79,6 +79,22 @@ class ConnectionTestRequest(ConnectionCreate):
     """Body for testing an unsaved connection (includes the password)."""
 
 
+class RsyncTestRead(BaseModel):
+    """Result of testing the rsync service, separate from the FTP result.
+
+    The same device can have a working FTP login and a broken rsync one, so the
+    two are reported independently rather than collapsed into one verdict.
+    """
+
+    ok: bool
+    reachable: bool
+    authenticated: bool
+    module_found: bool | None = None
+    modules: list[str] = []
+    summary: str
+    messages: list[str] = []
+
+
 class ConnectionTestResponse(BaseModel):
     ok: bool
     connectivity: bool
@@ -88,3 +104,5 @@ class ConnectionTestResponse(BaseModel):
     can_delete: bool | None
     summary: str
     messages: list[str]
+    # Present only when the connection has rsync enabled.
+    rsync: RsyncTestRead | None = None

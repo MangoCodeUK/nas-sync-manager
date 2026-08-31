@@ -1,0 +1,27 @@
+# NAS shares exposed to rsync jobs.
+#
+# THIS FILE IS THE SHARE LIST. It is the only place shares are configured, and
+# it contains nothing else, so adding one is a single line here plus a redeploy -
+# no code change, no migration, no hunting through the main compose file.
+#
+# CONVENTION (app/services/mounts.py depends on it): a host path /X is mounted at
+# /nas/X, so the container path always encodes the host path. Append ":ro" to
+# make a share source-only - the kernel then makes writes impossible whatever
+# the app does, which is worth using for anything you only ever copy FROM.
+#
+# The app reports which shares are mounted (Jobs -> transport rsync, and the
+# Browse page), and refuses a job pointing outside them with the exact line to
+# add here.
+#
+# Keep the list narrow. Every share added widens what a mistake can reach.
+services:
+  backend:
+    volumes:
+      # --- test data (safe to experiment with) ---------------------------
+      - /Volume1/RsyncTest:/nas/Volume1/RsyncTest
+
+      # --- real shares: uncomment the ones you want rsync jobs to use ----
+      # - /Volume1/public/Films:/nas/Volume1/public/Films
+      # - /Volume1/public/TV Shows:/nas/Volume1/public/TV Shows
+      # - /Volume1/public/Photos:/nas/Volume1/public/Photos
+      # - /Volume1/public/Documents:/nas/Volume1/public/Documents:ro

@@ -11,8 +11,9 @@ from app.schemas.connection import (
     ConnectionTestRequest,
     ConnectionTestResponse,
     ConnectionUpdate,
+    RsyncTestRead,
 )
-from app.services import audit, connection_service
+from app.services import audit, connection_service, crypto, rsync_client
 from app.services.ftp_client import ConnectionTestResult, FtpError
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
@@ -30,6 +31,25 @@ def _get_or_404(db: Session, conn_id: int):
     if conn is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return conn
+
+
+def _rsync_test(conn) -> RsyncTestRead | None:
+    """Test the rsync service too, when the connection has one configured."""
+    if not getattr(conn, "rsync_enabled", False):
+        return None
+    password = (
+        crypto.decrypt(conn.rsync_encrypted_password) if conn.rsync_encrypted_password else None
+    )
+    result = rsync_client.test_connection(conn, password)
+    return RsyncTestRead(
+        ok=result.ok,
+        reachable=result.reachable,
+        authenticated=result.authenticated,
+        module_found=result.module_found,
+        modules=result.modules,
+        summary=result.summary(),
+        messages=result.messages,
+    )
 
 
 def _test_to_response(result: ConnectionTestResult) -> ConnectionTestResponse:
@@ -92,4 +112,6 @@ def delete_connection(conn_id: int, db: Session = Depends(get_db)):
 def test_connection(conn_id: int, db: Session = Depends(get_db)):
     conn = _get_or_404(db, conn_id)
     result = connection_service.test_and_record(db, conn)
-    return _test_to_response(result)
+    response = _test_to_response(result)
+    response.rsync = _rsync_test(conn)
+    return response

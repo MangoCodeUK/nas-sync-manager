@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $NasEnv   = Join-Path $PSScriptRoot "nas.env"
 $ComposeFile = "docker-compose.prod.yml"
+$SharesFile  = "docker-compose.shares.yml"
 
 function Read-NasEnv {
     $cfg = @{}
@@ -107,10 +108,15 @@ function Update-Nas {
     # command (PowerShell would strip them before ssh.exe sees them).
     $dockerPath = 'export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
     $pickDC = '{ docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; }'
-    $run = '$DC -f docker-compose.prod.yml pull && $DC -f docker-compose.prod.yml up -d && $DC -f docker-compose.prod.yml ps'
+    $files = '-f docker-compose.prod.yml -f docker-compose.shares.yml'
+    $run = "`$DC $files pull && `$DC $files up -d && `$DC $files ps"
     $cmd = 'cd ''' + $dir + ''' && cat > docker-compose.prod.yml && ' + $dockerPath + ' && ' + $pickDC + ' && ' + $run
 
     Write-Host "Deploying to ${target}:$dir ..." -ForegroundColor Cyan
+    # Send the share list first (it is the file people edit), then the stack.
+    Get-Content -Raw (Join-Path $RepoRoot $SharesFile) |
+        ssh -p $port $target ("cd '" + $dir + "' && cat > docker-compose.shares.yml")
+    if ($LASTEXITCODE -ne 0) { throw 'Could not copy the share list to the NAS.' }
     Get-Content -Raw $composePath | ssh -p $port $target $cmd
     if ($LASTEXITCODE -ne 0) { throw "NAS update failed." }
     Write-Host "Deployed. Open http://$($cfg.NAS_HOST):<WEB_PORT> and hard-refresh (Ctrl+Shift+R)." -ForegroundColor Green
@@ -127,7 +133,7 @@ function Show-Status {
     $cfg = Read-NasEnv
     if ($cfg.NAS_HOST) {
         $dockerPath = 'export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
-        $cmd = $dockerPath + ' && cd ''' + $cfg.NAS_DIR + ''' && { docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; } && $DC -f docker-compose.prod.yml ps'
+        $cmd = $dockerPath + ' && cd ''' + $cfg.NAS_DIR + ''' && { docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; } && $DC -f docker-compose.prod.yml -f docker-compose.shares.yml ps'
         ssh -p $cfg.NAS_PORT "$($cfg.NAS_USER)@$($cfg.NAS_HOST)" $cmd
     } else { Write-Host "(NAS not configured yet)" }
 }

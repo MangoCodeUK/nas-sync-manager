@@ -330,6 +330,34 @@ export function ConnectionsPage() {
                 <li>Write access: {test.can_write === null ? "n/a" : test.can_write ? "yes" : "no"}</li>
                 <li>Delete access: {test.can_delete === null ? "n/a" : test.can_delete ? "yes" : "no"}</li>
               </ul>
+
+              {test.rsync && (
+                <>
+                  {/* Reported separately: a device can have a working FTP login
+                      and a broken rsync one, and a single verdict would hide it. */}
+                  <strong className={test.rsync.ok ? "ok-text" : "error-text"}>
+                    {test.rsync.summary}
+                  </strong>
+                  <ul className="test-checks">
+                    <li>Daemon reachable: {test.rsync.reachable ? "yes" : "no"}</li>
+                    <li>Login accepted: {test.rsync.authenticated ? "yes" : "no"}</li>
+                    <li>
+                      Module found:{" "}
+                      {test.rsync.module_found === null
+                        ? "n/a"
+                        : test.rsync.module_found
+                        ? "yes"
+                        : "no"}
+                    </li>
+                    {test.rsync.modules.length > 0 && (
+                      <li>Modules published: {test.rsync.modules.join(", ")}</li>
+                    )}
+                    {test.rsync.messages.map((m, i) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
           )}
 

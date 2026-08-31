@@ -118,6 +118,16 @@ export interface ConnectionInput {
   rsync_ssh_port?: number;
 }
 
+export interface RsyncTestResult {
+  ok: boolean;
+  reachable: boolean;
+  authenticated: boolean;
+  module_found: boolean | null;
+  modules: string[];
+  summary: string;
+  messages: string[];
+}
+
 export interface TestResult {
   ok: boolean;
   connectivity: boolean;
@@ -127,6 +137,9 @@ export interface TestResult {
   can_delete: boolean | null;
   summary: string;
   messages: string[];
+  /** Present only when the connection has rsync enabled. FTP and rsync are
+   *  reported separately: one can work while the other is misconfigured. */
+  rsync: RsyncTestResult | null;
 }
 
 export const api = {

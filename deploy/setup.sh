@@ -11,7 +11,8 @@ DOCKER_BIN="$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -
 if docker compose version >/dev/null 2>&1; then DC="docker compose";
 elif command -v docker-compose >/dev/null 2>&1; then DC="docker-compose";
 else echo "Docker Compose not found. Install the Docker app in TOS first." >&2; exit 1; fi
-DC="$DC -f docker-compose.prod.yml"
+# Two files: the stack, and the share list that is meant to be edited.
+DC="$DC -f docker-compose.prod.yml -f docker-compose.shares.yml"
 
 [ -f .env ] || { cp .env.example .env; echo "Created .env from the template. Edit IMAGE_OWNER and WEB_PORT if needed."; }
 

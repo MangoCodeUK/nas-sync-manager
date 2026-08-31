@@ -375,3 +375,69 @@ def test_contimeout_is_only_sent_to_a_daemon():
     assert "--contimeout=30" in rsync_client.build_argv(
         source=daemon, destination=local, job=job(), dry_run=True
     )
+
+
+# --- verification level must mean something, or not be offered --------------
+def test_verification_levels_1_and_2_use_rsyncs_quick_check():
+    for level in (1, 2):
+        assert "--checksum" not in _argv(verification_level=level)
+
+
+def test_verification_levels_3_and_4_add_a_real_checksum():
+    # Previously the control was shown on rsync jobs and did nothing at all.
+    for level in (3, 4):
+        assert "--checksum" in _argv(verification_level=level)
+
+
+def test_a_job_without_a_verification_level_still_builds():
+    # Duck-typed preview configs may not carry every field.
+    source = rsync_client.Endpoint(spec="/nas/a", is_local=True)
+    bare = SimpleNamespace(
+        job_type="copy",
+        mirror_mode="safe",
+        conflict_strategy="overwrite_if_newer_or_size_differs",
+        include_filters=None,
+        exclude_filters=None,
+        rsync_compress=False,
+        rsync_bandwidth_kbps=None,
+    )
+    assert "--checksum" not in rsync_client.build_argv(
+        source=source, destination=source, job=bare, dry_run=True
+    )
+
+
+# --- live progress ----------------------------------------------------------
+def test_progress_only_appears_on_real_runs():
+    # A dry run transfers nothing, so progress output would be noise.
+    assert "--info=progress2" not in _argv()
+    source = rsync_client.Endpoint(spec="/nas/a", is_local=True)
+    real = rsync_client.build_argv(
+        source=source, destination=source, job=job(), dry_run=False
+    )
+    assert "--info=progress2" in real
+    assert "--dry-run" not in real
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("     1,234,567  45%   12.34MB/s    0:00:05", (1234567, 45)),
+        ("        32,768   1%    0.00kB/s    0:00:00", (32768, 1)),
+        (">f+++++++++|11|Test1.txt", None),
+        ("Number of files: 6 (reg: 5, dir: 1)", None),
+        ("", None),
+    ],
+)
+def test_progress_lines_are_recognised_without_false_positives(line, expected):
+    assert rsync_client.parse_progress(line) == expected
+
+
+def test_progress_output_is_split_on_carriage_returns():
+    """--info=progress2 redraws one line with \r and emits no newline until it
+    finishes, so line-based reading would withhold every update until the end."""
+    import re as _re
+
+    chunk = "  1,000  10%  1MB/s  0:00:01\r  2,000  20%  1MB/s  0:00:02\rdone\n"
+    parts = [p for p in _re.split(r"[\r\n]", chunk) if p]
+    assert len(parts) == 3
+    assert rsync_client.parse_progress(parts[1]) == (2000, 20)

@@ -9,7 +9,18 @@ DOCKER_BIN="$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -
 if docker compose version >/dev/null 2>&1; then DC="docker compose";
 elif command -v docker-compose >/dev/null 2>&1; then DC="docker-compose";
 else echo "Docker Compose not found." >&2; exit 1; fi
-DC="$DC -f docker-compose.prod.yml"
+# A first update from an older install may not have the share list yet; the
+# stack runs fine without it (no shares mounted, which the app reports).
+if [ ! -f docker-compose.shares.yml ]; then
+  cat > docker-compose.shares.yml <<'SHARES'
+services:
+  backend:
+    volumes: []
+SHARES
+fi
+
+# Two files: the stack, and the share list that is meant to be edited.
+DC="$DC -f docker-compose.prod.yml -f docker-compose.shares.yml"
 
 $DC pull
 $DC up -d

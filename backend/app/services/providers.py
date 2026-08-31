@@ -407,10 +407,35 @@ class _Progress:
         self._db = db
         self._run = run
         self._done = 0
+        self._bytes = 0
+        self._current: str | None = None
         self._last_flush = 0.0
+
+    def _flush(self, now: float, force: bool = False) -> None:
+        """Persist progress, throttled so many small files do not commit per file."""
+        if not force and now - self._last_flush < self.FLUSH_SECONDS:
+            return
+        self._run.current_item = self._current
+        self._run.files_copied = self._done
+        self._run.bytes_transferred = self._bytes
+        self._db.commit()
+        self._last_flush = now
 
     def saw(self, line: str) -> None:
         import time
+
+        from app.services.rsync_client import parse_progress
+
+        # --info=progress2 gives cumulative bytes for the whole transfer. The UI
+        # already derives percentage and rate from bytes_transferred against the
+        # plan's bytes_total, so feeding this straight in is all live progress
+        # needs - and every figure shown is one rsync actually reported.
+        progress = parse_progress(line)
+        if progress is not None:
+            transferred, _percent = progress
+            self._bytes = transferred
+            self._flush(time.monotonic())
+            return
 
         if "|" not in line:
             return
@@ -421,14 +446,8 @@ class _Progress:
             return
 
         self._done += 1
-        now = time.monotonic()
-        # Throttled: a job of many small files must not commit once per file.
-        if now - self._last_flush < self.FLUSH_SECONDS:
-            return
-        self._run.current_item = name
-        self._run.files_copied = self._done
-        self._db.commit()
-        self._last_flush = now
+        self._current = name
+        self._flush(time.monotonic())
 
 
 def _without_deletes(job):

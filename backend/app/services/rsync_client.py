@@ -34,6 +34,14 @@ _PROTOCOL_RE = re.compile(r"\bprotocol\s+version\s+(\d+)")
 _REG_FILES_RE = re.compile(r"Number of files:.*?\breg:\s*([\d,]+)")
 
 # Our own --out-format, chosen so parsing never has to guess column widths.
+# --info=progress2 redraws a line like:
+#   "     1,234,567  45%   12.34MB/s    0:00:05"
+# The leading number is cumulative bytes for the WHOLE transfer, which is what
+# makes it usable as overall progress (plain --progress is per-file).
+PROGRESS_RE = re.compile(
+    r"^\s*([\d,]+)\s+(\d+)%\s+(\S+)\s+(\d+:\d{2}:\d{2})"
+)
+
 OUT_FORMAT = "%i|%l|%n"
 _SEPARATOR = "|"
 
@@ -252,6 +260,15 @@ def build_argv(
     if job.rsync_bandwidth_kbps:
         argv += [f"--bwlimit={int(job.rsync_bandwidth_kbps)}"]
 
+    # Verification, mapped onto what rsync actually offers. Levels 1-2 use
+    # rsync's default quick check (size and mtime), which is what makes
+    # incremental runs fast. Levels 3-4 add --checksum: every file is read in
+    # full on BOTH ends and hashed, which is genuinely stronger and genuinely
+    # expensive - on these devices it is I/O-bound and can take far longer
+    # than the transfer it is checking.
+    if int(getattr(job, 'verification_level', 2) or 2) >= 3:
+        argv += ['--checksum']
+
     argv += _conflict_flags(job.conflict_strategy)
     argv += _filter_flags(job.include_filters, job.exclude_filters)
 
@@ -268,6 +285,11 @@ def build_argv(
 
     if dry_run:
         argv += ["--dry-run"]
+    else:
+        # Cumulative byte progress for the whole transfer. The UI already
+        # derives percentage and rate from bytes, so feeding this in is all
+        # that live progress needs - no invented numbers.
+        argv += ["--info=progress2"]
     argv += ["--itemize-changes", f"--out-format={OUT_FORMAT}", "--stats"]
 
     ssh_port = source.ssh_port or destination.ssh_port
@@ -400,10 +422,25 @@ def run_streaming(
     lines: list[str] = []
     cancelled = False
     assert process.stdout is not None
-    for line in process.stdout:
-        lines.append(line)
-        if on_line is not None:
-            on_line(line.rstrip("\n"))
+
+    # Read in chunks and split on BOTH separators. --info=progress2 redraws one
+    # line using carriage returns and never emits a newline until it finishes, so
+    # iterating the pipe line-by-line would hold every progress update hostage
+    # until the transfer ended - which is precisely when progress stops mattering.
+    buffer = ""
+    while True:
+        chunk = process.stdout.read(1024)
+        if not chunk:
+            break
+        buffer += chunk
+        parts = re.split(r"[\r\n]", buffer)
+        buffer = parts.pop()  # trailing fragment: an unfinished line
+        for part in parts:
+            if not part:
+                continue
+            lines.append(part + "\n")
+            if on_line is not None:
+                on_line(part)
         if should_cancel is not None and should_cancel():
             cancelled = True
             process.terminate()
@@ -412,6 +449,10 @@ def run_streaming(
             except subprocess.TimeoutExpired:
                 process.kill()
             break
+    if buffer and not cancelled:
+        lines.append(buffer + "\n")
+        if on_line is not None:
+            on_line(buffer)
 
     stderr = process.stderr.read() if process.stderr else ""
     process.wait()
@@ -562,6 +603,14 @@ def _why(flags: str) -> str:
     return "changed: " + ", ".join(reasons) if reasons else "changed"
 
 
+def parse_progress(line: str) -> tuple[int, int] | None:
+    """``(bytes so far, percent)`` from an --info=progress2 line, or None."""
+    match = PROGRESS_RE.match(line)
+    if not match:
+        return None
+    return int(match.group(1).replace(",", "")), int(match.group(2))
+
+
 def parse_regular_file_count(stdout: str) -> int | None:
     """Regular files rsync considered, from --stats. None only when unknowable.
 
@@ -595,12 +644,14 @@ __all__ = [
     "RsyncCapability",
     "RsyncError",
     "RsyncResult",
+    "RsyncTestResult",
     "build_argv",
     "build_endpoint",
     "count_files",
     "list_files",
     "normalise",
     "parse_itemized",
+    "parse_progress",
     "parse_protocol",
     "parse_regular_file_count",
     "parse_version",
@@ -608,4 +659,121 @@ __all__ = [
     "redacted_command",
     "run",
     "run_streaming",
+    "test_connection",
 ]
+
+
+# --- connection testing -----------------------------------------------------
+@dataclass
+class RsyncTestResult:
+    """What we could actually establish about a device's rsync service."""
+
+    reachable: bool = False
+    authenticated: bool = False
+    module_found: bool | None = None
+    modules: list[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.reachable and self.authenticated and self.module_found is not False
+
+    def summary(self) -> str:
+        if not self.reachable:
+            return "rsync: unreachable"
+        if not self.authenticated:
+            return "rsync: reachable, login refused"
+        if self.module_found is False:
+            return "rsync: logged in, module not found"
+        return "rsync: OK"
+
+
+def test_connection(conn, password: str | None = None) -> RsyncTestResult:
+    """Check a device's rsync service the way a job would use it.
+
+    Deliberately separate from the FTP test: the same device can have a working
+    FTP login and a broken rsync one, and finding that out when a job runs is far
+    worse than finding out here.
+    """
+    import socket
+
+    result = RsyncTestResult()
+    host = (conn.rsync_host or conn.host).strip()
+
+    if conn.rsync_mode == "ssh":
+        # Ask the far end for its rsync version over SSH: proves the transport,
+        # the login and that rsync exists there, in one round trip.
+        port = conn.rsync_ssh_port or 22
+        user = (conn.rsync_username or "").strip()
+        target = f"{user}@{host}" if user else host
+        probe = run(
+            [
+                "ssh", "-p", str(port),
+                "-o", "BatchMode=yes",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ConnectTimeout=10",
+                target, "rsync --version",
+            ],
+            timeout=30,
+        )
+        result.reachable = probe.returncode != 255 or "refused" not in (probe.stderr or "").lower()
+        result.authenticated = probe.returncode == 0
+        if probe.returncode == 0:
+            version = parse_version(probe.stdout)
+            result.messages.append(f"SSH login OK; remote rsync {version or 'present'}")
+        else:
+            detail = (probe.stderr or "").strip().splitlines()
+            result.messages.append(detail[-1] if detail else "SSH login failed")
+        return result
+
+    # Daemon mode. Step one is a plain socket: it separates "device is off or the
+    # service is disabled" from "credentials are wrong", which the rsync exit
+    # code alone does not.
+    port = conn.rsync_port or 873
+    sock = socket.socket()
+    sock.settimeout(10)
+    try:
+        sock.connect((host, port))
+        greeting = sock.recv(128).decode(errors="replace")
+        result.reachable = greeting.startswith("@RSYNCD")
+        if result.reachable:
+            result.messages.append(f"Daemon responded: {greeting.strip()}")
+        else:
+            result.messages.append(f"Something is listening on {port} but it is not rsync.")
+    except OSError as exc:
+        result.messages.append(f"Cannot reach {host}:{port} ({exc})")
+        return result
+    finally:
+        sock.close()
+
+    if not result.reachable:
+        return result
+
+    user = (conn.rsync_username or "").strip()
+    target = f"{user}@{host}::" if user else f"{host}::"
+    listing = run(["rsync", "--list-only", target], password=password, timeout=30)
+    if listing.returncode != 0:
+        detail = (listing.stderr or "").strip().splitlines()
+        result.messages.append(
+            "Login refused - check the rsync username and password. "
+            + (detail[-1] if detail else "")
+        )
+        return result
+
+    result.authenticated = True
+    result.modules = sorted(
+        line.split("\t")[0].strip()
+        for line in listing.stdout.splitlines()
+        if line.strip() and not line.startswith("@")
+    )
+    result.messages.append(f"Modules available: {', '.join(result.modules) or 'none'}")
+
+    wanted = (conn.rsync_module or "").strip().strip("/")
+    if wanted:
+        result.module_found = wanted in result.modules
+        if not result.module_found:
+            result.messages.append(
+                f"Module '{wanted}' is not published by this device. "
+                f"Check the module name in its rsync server settings."
+            )
+    return result

@@ -38,6 +38,15 @@ const VERIFICATION = [
   [4, "Level 4 - Download and hash"],
 ] as const;
 
+// rsync verifies differently, so the labels say what it will really do rather
+// than borrowing the FTP engine's wording for options rsync does not have.
+const RSYNC_VERIFICATION = [
+  [1, "Quick check - size and modification time"],
+  [2, "Quick check - size and modification time"],
+  [3, "Checksum - read and hash every file on both ends"],
+  [4, "Checksum - read and hash every file on both ends"],
+] as const;
+
 const DELETE_STRATEGIES = [
   ["manual_approval", "Manual approval (recommended)"],
   ["auto_delete_after_verification", "Auto-delete after verification"],
@@ -215,9 +224,18 @@ export function JobEditor({
         <label className="field">
           <span>Verification level</span>
           <select value={form.verification_level} onChange={(e) => set("verification_level", Number(e.target.value))}>
-            {VERIFICATION.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {(form.transport === "rsync" ? RSYNC_VERIFICATION : VERIFICATION).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
           </select>
         </label>
+        {form.transport === "rsync" && form.verification_level >= 3 && (
+          <p className="muted small">
+            Checksum reads every file in full on <em>both</em> devices and hashes it.
+            It is a real integrity check, and on these NAS units it can take far
+            longer than the transfer it is verifying.
+          </p>
+        )}
         {form.job_type === "mirror" && (
           <label className="field">
             <span>Mirror mode</span>
