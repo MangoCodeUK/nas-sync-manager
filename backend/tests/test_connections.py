@@ -78,3 +78,50 @@ def test_create_requires_password(client, ftp_server):
     cfg = {k: ftp_server[k] for k in ("host", "port", "username", "protocol", "passive_mode", "timeout_seconds", "root_path")}
     resp = client.post("/api/connections", json={"name": "No password", **cfg})
     assert resp.status_code == 422
+
+
+def test_rsync_is_reported_separately_from_ftp(client, ftp_server, monkeypatch):
+    """A device can have a working FTP login and a broken rsync one.
+
+    Collapsing both into a single verdict would hide exactly the case worth
+    catching, so the rsync result is its own block - and it is produced for an
+    unsaved form too, which is when a wrong module is cheapest to fix.
+    """
+    from app.services import rsync_client
+
+    monkeypatch.setattr(
+        rsync_client,
+        "test_connection",
+        lambda conn, password=None: rsync_client.RsyncTestResult(
+            reachable=True,
+            authenticated=True,
+            module_found=False,
+            modules=["SomethingElse"],
+            messages=["Module 'Wanted' is not published by this device."],
+        ),
+    )
+
+    payload = {
+        **{k: v for k, v in ftp_server.items() if k != "root_dir"},
+        "name": "probe",
+        "fs_root": "/mnt/md0",
+        "rsync_enabled": True,
+        "rsync_mode": "daemon",
+        "rsync_module": "Wanted",
+        "rsync_username": "nassync",
+        "rsync_password": "secret",
+    }
+    body = client.post("/api/connections/test", json=payload).json()
+
+    assert body["ok"] is True  # FTP is fine...
+    assert body["rsync"]["ok"] is False  # ...while rsync is not
+    assert body["rsync"]["module_found"] is False
+    assert "SomethingElse" in body["rsync"]["modules"]
+
+
+def test_no_rsync_block_when_the_connection_does_not_use_rsync(client, ftp_server):
+    payload = {
+        **{k: v for k, v in ftp_server.items() if k != "root_dir"},
+        "name": "ftp-only",
+    }
+    assert client.post("/api/connections/test", json=payload).json()["rsync"] is None

@@ -1,6 +1,8 @@
 """NAS connection endpoints (FRD FR-001/002, FR-019)."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -33,13 +35,19 @@ def _get_or_404(db: Session, conn_id: int):
     return conn
 
 
-def _rsync_test(conn) -> RsyncTestRead | None:
-    """Test the rsync service too, when the connection has one configured."""
+def _rsync_test(conn, password: str | None = None) -> RsyncTestRead | None:
+    """Test the rsync service too, when the connection has one configured.
+
+    ``password`` is supplied directly when testing an unsaved form, where nothing
+    has been encrypted yet; for a saved connection it is decrypted from storage.
+    Testing before saving is the point at which a wrong module or password is
+    cheapest to discover.
+    """
     if not getattr(conn, "rsync_enabled", False):
         return None
-    password = (
-        crypto.decrypt(conn.rsync_encrypted_password) if conn.rsync_encrypted_password else None
-    )
+    if password is None:
+        stored = getattr(conn, "rsync_encrypted_password", None)
+        password = crypto.decrypt(stored) if stored else None
     result = rsync_client.test_connection(conn, password)
     return RsyncTestRead(
         ok=result.ok,
@@ -79,12 +87,18 @@ def create_connection(payload: ConnectionCreate, db: Session = Depends(get_db)):
 
 @router.post("/test", response_model=ConnectionTestResponse)
 def test_unsaved(payload: ConnectionTestRequest):
-    """Test a connection config before saving it."""
-    client = connection_service.client_from_config(payload.model_dump())
+    """Test a connection config before saving it - rsync included."""
+    data = payload.model_dump()
+    client = connection_service.client_from_config(data)
     try:
-        return _test_to_response(client.test_connection())
+        response = _test_to_response(client.test_connection())
     except FtpError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # An unsaved form is duck-typed into the shape the rsync test reads, so the
+    # same checks run whether or not the connection has been saved yet.
+    response.rsync = _rsync_test(SimpleNamespace(**data), data.get("rsync_password"))
+    return response
 
 
 @router.get("/{conn_id}", response_model=ConnectionRead)
