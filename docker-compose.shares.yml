@@ -20,8 +20,17 @@ services:
       # --- test data (safe to experiment with) ---------------------------
       - /Volume1/RsyncTest:/nas/Volume1/RsyncTest
 
-      # --- real shares: uncomment the ones you want rsync jobs to use ----
-      # - /Volume1/public/Films:/nas/Volume1/public/Films
-      # - /Volume1/public/TV Shows:/nas/Volume1/public/TV Shows
-      # - /Volume1/public/Photos:/nas/Volume1/public/Photos
-      # - /Volume1/public/Documents:/nas/Volume1/public/Documents:ro
+      # --- real data -----------------------------------------------------
+      # The whole public share, so browsing over rsync shows the same structure
+      # FTP does (Media Library, Software and Assets, ...). Mounting the parent
+      # rather than each folder means a new share appears without a redeploy.
+      #
+      # This is the deliberate widening from the test-only start: rsync jobs can
+      # now reach ~5 TB of real data, which is why the deletion guards, the
+      # mandatory dry-run and the empty-source abort exist. Narrow it back to
+      # individual folders any time by replacing this line.
+      - /Volume1/public:/nas/Volume1/public
+
+      # Examples of narrowing, if you would rather:
+      # - /Volume1/public/Media Library:/nas/Volume1/public/Media Library
+      # - /Volume1/public/Software and Assets:/nas/Volume1/public/Software and Assets:ro

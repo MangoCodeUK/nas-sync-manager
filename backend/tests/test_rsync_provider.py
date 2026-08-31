@@ -82,11 +82,26 @@ def test_daemon_endpoint_at_the_module_root_has_no_subpath():
     assert endpoint.spec == "nassync@192.168.50.189::RsyncSourceTest"
 
 
-def test_a_path_outside_the_module_is_refused_rather_than_silently_retargeted():
-    with pytest.raises(RsyncError, match="not inside the rsync module"):
+def test_the_module_comes_from_the_path_so_several_can_be_used():
+    # A device can publish more than one module, and which applies depends on
+    # where the job points - not on one field set once on the connection.
+    endpoint = rsync_client.build_endpoint(
+        connection(), "/mnt/md0/public/Films", write=False, available=[]
+    )
+    assert endpoint.spec == "nassync@192.168.50.189::public/Films"
+
+
+def test_a_path_outside_the_devices_filesystem_root_is_refused():
+    with pytest.raises(RsyncError, match="not under"):
         rsync_client.build_endpoint(
-            connection(), "/mnt/md0/SomethingElse", write=False, available=[]
+            connection(), "/somewhere/else", write=False, available=[]
         )
+
+
+def test_the_filesystem_root_itself_cannot_be_addressed():
+    # A daemon exposes named modules, never the whole device.
+    with pytest.raises(RsyncError, match="cannot address"):
+        rsync_client.build_endpoint(connection(), "/mnt/md0", write=False, available=[])
 
 
 def test_ssh_endpoint_uses_the_real_filesystem_path():

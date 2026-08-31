@@ -173,14 +173,8 @@ def build_endpoint(conn, path: str, *, write: bool, available=None) -> Endpoint:
         return Endpoint(spec=f"{prefix}:{path}", is_local=False, ssh_port=conn.rsync_ssh_port or 22)
 
     # Daemon mode: user@host::module/subpath. A module is a named root on the
-    # remote device, so the job's path must be re-expressed relative to it.
-    module = (conn.rsync_module or "").strip().strip("/")
-    if not module:
-        raise RsyncError(
-            f"{conn.name} uses rsync daemon mode but has no module set. Add the module "
-            f"name configured in that device's rsync server settings."
-        )
-    relative = _relative_to_module(path, conn, module)
+    # remote device, so the job's path is re-expressed relative to it.
+    module, relative = _module_for(path, conn)
     prefix = f"{user}@{host}" if user else host
     spec = f"{prefix}::{module}"
     if relative:
@@ -188,28 +182,37 @@ def build_endpoint(conn, path: str, *, write: bool, available=None) -> Endpoint:
     return Endpoint(spec=spec, is_local=False, needs_password=bool(user), is_daemon=True)
 
 
-def _relative_to_module(path: str, conn, module: str) -> str:
-    """Express a device path relative to its rsync module root.
+def _module_for(path: str, conn) -> tuple[str, str]:
+    """Split a device path into ``(module, subpath)``.
 
-    A module maps a name to a directory on the device. With fs_root=/mnt/md0 and
-    a module RsyncSourceTest rooted at /mnt/md0/RsyncSourceTest, the job path
-    /mnt/md0/RsyncSourceTest/FolderA has to go on the wire as "FolderA". We
-    cannot read the remote rsyncd.conf, so this relies on the convention that a
-    module is named after the share directly beneath fs_root.
+    The module is taken from the path itself - the first segment below fs_root -
+    rather than from the connection's single configured module. A device can
+    publish several modules, and which one applies depends on where the job is
+    pointing, not on one field set once.
+
+    This relies on a module being named after the top-level folder it exposes
+    (module ``public`` rooted at ``/mnt/md0/public``), which is how TOS names them
+    by default. Where that does not hold, Test Connection lists what the device
+    actually publishes so the mismatch is visible rather than mysterious.
     """
-    path = normalise(path)
     fs_root = normalise(conn.fs_root or "/")
-    share_root = normalise(f"{fs_root}/{module}")
-    if path == share_root:
-        return ""
-    if path.startswith(share_root.rstrip("/") + "/"):
-        return path[len(share_root.rstrip("/")) + 1 :]
-    # Not under the module. Fail loudly rather than send a path that quietly
-    # means a different directory on the far end.
-    raise RsyncError(
-        f"'{path}' is not inside the rsync module '{module}' on {conn.name} "
-        f"(expected a path under {share_root})."
-    )
+    target = normalise(path)
+    if not (target == fs_root or target.startswith(fs_root.rstrip("/") + "/")):
+        raise RsyncError(
+            f"'{path}' is not under {conn.name}'s filesystem root ({fs_root}). Check the "
+            f"path, or the Filesystem root set on that connection."
+        )
+
+    relative = target[len(fs_root.rstrip("/")) :].lstrip("/")
+    if not relative:
+        raise RsyncError(
+            f"'{path}' is {conn.name}'s filesystem root itself, which rsync cannot address "
+            f"directly - a daemon exposes named modules, not the whole device. Point the "
+            f"job at a share below it."
+        )
+
+    module, _, subpath = relative.partition("/")
+    return module, subpath
 
 
 def normalise(path: str) -> str:
