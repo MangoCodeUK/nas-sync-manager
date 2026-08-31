@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError, type Connection } from "../api";
-import { FolderPane, type PaneSelection } from "../components/FolderPane";
+import { api, ApiError, type Connection, type Transport } from "../api";
+import { FolderPane, rootFor, type PaneSelection } from "../components/FolderPane";
 
 export function BrowsePage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<PaneSelection>({ connId: null, path: "/" });
   const [dest, setDest] = useState<PaneSelection>({ connId: null, path: "/" });
+  const [transport, setTransport] = useState<Transport>("ftp");
   const navigate = useNavigate();
+
+  // Switching transport re-roots both panes: FTP and rsync describe the same
+  // files with different paths, so a path carried across would be meaningless.
+  function switchTransport(next: Transport) {
+    setTransport(next);
+    setSource((s) => ({ ...s, path: rootFor(connections.find((c) => c.id === s.connId), next) }));
+    setDest((d) => ({ ...d, path: rootFor(connections.find((c) => c.id === d.connId), next) }));
+  }
 
   useEffect(() => {
     api
@@ -27,6 +36,7 @@ export function BrowsePage() {
     if (!canCreate) return;
     const q = new URLSearchParams({
       new: "1",
+      transport,
       src_conn: String(source.connId),
       src_path: source.path,
       dst_conn: String(dest.connId),
@@ -52,9 +62,25 @@ export function BrowsePage() {
     <div className="page">
       <h1>Browse</h1>
       {error && <p className="error-text">{error}</p>}
+
+      <div className="browse-transport">
+        <label className="field">
+          <span>Browse over</span>
+          <select value={transport} onChange={(e) => switchTransport(e.target.value as Transport)}>
+            <option value="ftp">FTP - shows FTP paths (/public/...)</option>
+            <option value="rsync">rsync - shows filesystem paths (/Volume1/..., /mnt/md0/...)</option>
+          </select>
+        </label>
+        <p className="muted small">
+          {transport === "rsync"
+            ? "Folders here are addressed the way rsync jobs address them. A device shows the shares actually reachable - bind-mounted shares, or the modules its rsync server publishes - rather than its whole filesystem."
+            : "Folders here are addressed the way FTP jobs address them, relative to each connection's FTP root."}
+        </p>
+      </div>
+
       <div className="browse-panes">
-        <FolderPane title="Source" connections={connections} selection={source} onChange={setSource} />
-        <FolderPane title="Destination" connections={connections} selection={dest} onChange={setDest} />
+        <FolderPane title="Source" connections={connections} selection={source} onChange={setSource} transport={transport} />
+        <FolderPane title="Destination" connections={connections} selection={dest} onChange={setDest} transport={transport} />
       </div>
       <div className="browse-bar">
         <div className="muted small">

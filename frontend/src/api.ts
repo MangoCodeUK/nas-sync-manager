@@ -149,12 +149,15 @@ export const api = {
   testConfig: (body: ConnectionInput) =>
     request<TestResult>("/api/connections/test", { method: "POST", body: JSON.stringify(body) }),
 
-  browse: (connId: number, path?: string) =>
-    request<BrowseResponse>(
-      `/api/browse/${connId}${path ? `?path=${encodeURIComponent(path)}` : ""}`
+  browse: (connId: number, path?: string, transport: Transport = "ftp") => {
+    const q = new URLSearchParams({ transport });
+    if (path) q.set("path", path);
+    return request<BrowseResponse>(`/api/browse/${connId}?${q.toString()}`);
+  },
+  folderSize: (connId: number, path: string, transport: Transport = "ftp") =>
+    request<FolderSize>(
+      `/api/browse/${connId}/size?${new URLSearchParams({ path, transport }).toString()}`
     ),
-  folderSize: (connId: number, path: string) =>
-    request<FolderSize>(`/api/browse/${connId}/size?path=${encodeURIComponent(path)}`),
 
   listJobs: () => request<Job[]>("/api/jobs"),
   getJob: (id: number) => request<Job>(`/api/jobs/${id}`),

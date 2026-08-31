@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, formatBytes, type BrowseEntry, type Connection, type FolderSize } from "../api";
+import {
+  api,
+  ApiError,
+  formatBytes,
+  type BrowseEntry,
+  type Connection,
+  type FolderSize,
+  type Transport,
+} from "../api";
 
 export interface PaneSelection {
   connId: number | null;
@@ -11,11 +19,13 @@ export function FolderPane({
   connections,
   selection,
   onChange,
+  transport,
 }: {
   title: string;
   connections: Connection[];
   selection: PaneSelection;
   onChange: (s: PaneSelection) => void;
+  transport: Transport;
 }) {
   const [entries, setEntries] = useState<BrowseEntry[]>([]);
   const [parent, setParent] = useState<string | null>(null);
@@ -37,7 +47,7 @@ export function FolderPane({
     setError(null);
     setSize(null);
     api
-      .browse(connId, path)
+      .browse(connId, path, transport)
       .then((r) => {
         if (!active) return;
         setEntries(r.entries);
@@ -48,18 +58,20 @@ export function FolderPane({
     return () => {
       active = false;
     };
-  }, [connId, path]);
+  }, [connId, path, transport]);
 
   function selectConnection(id: number) {
     const conn = connections.find((c) => c.id === id);
-    onChange({ connId: id, path: conn?.root_path || "/" });
+    // Each transport has its own path vocabulary, so the starting folder differs:
+    // FTP begins at the FTP root, rsync at the device's real filesystem root.
+    onChange({ connId: id, path: rootFor(conn, transport) });
   }
 
   async function computeSize() {
     if (connId === null) return;
     setSizing(true);
     try {
-      setSize(await api.folderSize(connId, path));
+      setSize(await api.folderSize(connId, path, transport));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Size calc failed");
     } finally {
@@ -139,4 +151,11 @@ export function FolderPane({
       )}
     </div>
   );
+}
+
+
+/** Where a pane should start for a given transport. */
+export function rootFor(conn: Connection | undefined, transport: Transport): string {
+  if (!conn) return "/";
+  return transport === "rsync" ? conn.fs_root || "/" : conn.root_path || "/";
 }

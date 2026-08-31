@@ -697,16 +697,22 @@ td {
 
 /* Redacted command preview on an rsync plan. Collapsed by default: useful when
    something looks wrong, noise the rest of the time. */
+/* Only the theme's own tokens - no invented names and no light-mode fallbacks.
+   This box first shipped using a variable that did not exist, so it fell back to
+   a near-white panel while the text kept the dark theme's light colour: an empty
+   white rectangle. Every colour here is set explicitly for that reason. */
 .plan-command {
   margin: 10px 0 14px;
-  border: 1px solid var(--border, #d5dbe3);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
-  background: var(--panel-alt, #f6f8fa);
+  background: var(--panel-2);
+  color: var(--text);
 }
 .plan-command summary {
   cursor: pointer;
   font-size: 0.85rem;
+  color: var(--text);
 }
 .plan-command pre {
   margin: 10px 0 4px;
@@ -715,6 +721,26 @@ td {
   white-space: pre;
   font-size: 0.78rem;
   line-height: 1.5;
-  background: var(--panel, #fff);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
+}
+
+/* Transport chooser above the dual-pane browser. Uses the theme's own tokens
+   only - every colour explicit, no invented variable names. */
+.browse-transport {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+.browse-transport .field {
+  max-width: 520px;
+  margin: 0;
+}
+.browse-transport p {
+  margin: 8px 0 0;
 }

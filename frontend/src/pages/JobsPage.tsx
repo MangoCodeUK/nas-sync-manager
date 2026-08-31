@@ -96,6 +96,9 @@ export function JobsPage() {
         // Open a prefilled editor when arriving from Browse "create job from selection".
         if (params.get("new") === "1") {
           const over: Partial<JobInput> = {
+            // Paths from Browse only make sense with the transport they were
+            // browsed over, so it comes across with them.
+            transport: params.get("transport") === "rsync" ? "rsync" : "ftp",
             source_connection_id: Number(params.get("src_conn")) || conns[0]?.id,
             source_path: params.get("src_path") || "/",
             destination_connection_id: Number(params.get("dst_conn")) || conns[1]?.id,
