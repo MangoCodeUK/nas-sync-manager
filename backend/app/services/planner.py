@@ -33,6 +33,14 @@ class PlanItem:
 class Plan:
     items: list[PlanItem] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # Files deliberately left alone, when that number cannot be counted from
+    # ``items``. The FTP planner walks both trees and emits a SKIP item per
+    # unchanged file, so it leaves this None. rsync only reports what changes, so
+    # its provider derives the figure from --stats instead of fabricating items.
+    unchanged: int | None = None
+    # The exact command this plan would issue, with credentials removed.
+    # Only transports that shell out set it; the FTP planner leaves it None.
+    command: str | None = None
 
     def _count(self, action: str) -> int:
         return sum(1 for i in self.items if i.action == action)
@@ -47,7 +55,7 @@ class Plan:
 
     @property
     def skip_count(self) -> int:
-        return self._count(SKIP)
+        return self.unchanged if self.unchanged is not None else self._count(SKIP)
 
     @property
     def mkdir_count(self) -> int:

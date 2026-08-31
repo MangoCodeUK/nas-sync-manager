@@ -694,3 +694,27 @@ td {
 .log-filters .field.check {
   margin: 0;
 }
+
+/* Redacted command preview on an rsync plan. Collapsed by default: useful when
+   something looks wrong, noise the rest of the time. */
+.plan-command {
+  margin: 10px 0 14px;
+  border: 1px solid var(--border, #d5dbe3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: var(--panel-alt, #f6f8fa);
+}
+.plan-command summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.plan-command pre {
+  margin: 10px 0 4px;
+  padding: 10px;
+  overflow-x: auto;       /* long argv must scroll, not widen the page */
+  white-space: pre;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  background: var(--panel, #fff);
+  border-radius: 4px;
+}

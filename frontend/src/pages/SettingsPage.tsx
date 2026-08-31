@@ -166,6 +166,21 @@ export function SettingsPage() {
             <input type="number" min={0} value={form.max_auto_destination_deletes} onChange={(e) => update("max_auto_destination_deletes", Number(e.target.value))} />
           </label>
           <label className="field">
+            <span>Max deletions as % of destination</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={form.max_delete_percent}
+              onChange={(e) => update("max_delete_percent", Number(e.target.value))}
+            />
+            <span className="muted small">
+              A second, proportional guard. A run that would remove more than this
+              share of the destination is stopped even when the count above allows
+              it - removing most of a folder is usually a wrong path, not a tidy-up.
+            </span>
+          </label>
+          <label className="field">
             <span>Archive path template</span>
             <input value={form.archive_path_template} onChange={(e) => update("archive_path_template", e.target.value)} />
           </label>

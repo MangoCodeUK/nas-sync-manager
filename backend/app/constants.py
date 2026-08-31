@@ -27,4 +27,11 @@ ScheduleType = Literal["manual", "interval", "hourly", "daily", "weekly", "month
 
 Protocol = Literal["ftp", "ftps"]
 
+# How bytes actually move, kept separate from JobType (what the job does).
+Transport = Literal["ftp", "rsync"]
+
+# daemon = rsync://user@host:873/module (no encryption, no key management)
+# ssh    = rsync -e "ssh -p N" user@host:/path
+RsyncMode = Literal["daemon", "ssh"]
+
 VerificationLevel = Literal[1, 2, 3, 4]

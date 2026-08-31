@@ -1,6 +1,8 @@
 """Sync job endpoints (FRD FR-021/022, FR-012/013)."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,7 +18,15 @@ from app.schemas.job import (
     PlanRead,
 )
 from app.schemas.run import JobRunItemRead, JobRunRead
-from app.services import audit, job_service, jobs_runner, scheduler, transfer_engine
+from app.services import (
+    audit,
+    job_service,
+    jobs_runner,
+    providers,
+    scheduler,
+    transfer_engine,
+)
+from app.services.rsync_client import RsyncError
 from app.services.planner import Plan
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
@@ -53,6 +63,7 @@ def _plan_to_read(plan: Plan) -> PlanRead:
         archive_count=plan.archive_count,
         transfer_bytes=plan.transfer_bytes,
         truncated=len(plan.items) > _MAX_PLAN_ITEMS,
+        command=plan.command,
     )
 
 
@@ -71,7 +82,13 @@ def create_job(payload: JobCreate, db: Session = Depends(get_db)):
 
 @router.post("/preview", response_model=PlanRead)
 def preview(payload: JobPreviewRequest, db: Session = Depends(get_db)):
-    plan = jobs_runner.assemble_plan(db, **payload.model_dump())
+    # An unsaved config is duck-typed into the shape a provider reads, so
+    # Preview works identically before and after the job is saved.
+    config = SimpleNamespace(**payload.model_dump())
+    try:
+        plan = providers.plan_for_job(db, config)
+    except RsyncError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _plan_to_read(plan)
 
 

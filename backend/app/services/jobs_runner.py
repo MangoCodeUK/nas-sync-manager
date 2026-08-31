@@ -136,7 +136,11 @@ def dry_run(db: Session, job: SyncJob) -> tuple[JobRun, Plan]:
 
     started = time.monotonic()
     try:
-        plan = plan_for_job(db, job)
+        # Dispatch on transport: FTP walks both trees, rsync asks rsync. Both
+        # return the same Plan shape, so everything downstream is unchanged.
+        from app.services import providers
+
+        plan = providers.plan_for_job(db, job)
         considered = plan.copy_count + plan.update_count + plan.skip_count
         run.files_scanned = considered
         run.files_copied = plan.copy_count
@@ -146,8 +150,9 @@ def dry_run(db: Session, job: SyncJob) -> tuple[JobRun, Plan]:
         run.bytes_transferred = plan.transfer_bytes
         run.status = "success"
         run.summary = (
-            f"Dry-run: {plan.copy_count} new, {plan.update_count} updated, "
-            f"{plan.skip_count} skipped, {plan.mkdir_count} folders"
+            f"Dry-run ({getattr(job, 'transport', 'ftp')}): {plan.copy_count} new, "
+            f"{plan.update_count} updated, {plan.skip_count} unchanged, "
+            f"{plan.mkdir_count} folders, {plan.delete_count} to delete"
         )
     except HTTPException:
         raise

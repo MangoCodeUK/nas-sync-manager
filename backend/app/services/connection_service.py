@@ -19,7 +19,13 @@ def get_connection(db: Session, conn_id: int) -> NasConnection | None:
 
 def create_connection(db: Session, data: dict) -> NasConnection:
     password = data.pop("password")
+    # The rsync secret is separate from the FTP one: the same device often has
+    # different accounts for each service (here, "Admin" for FTP and "nassync"
+    # for rsync). Both are Fernet-encrypted with the same key.
+    rsync_password = data.pop("rsync_password", None)
     conn = NasConnection(**data, encrypted_password=crypto.encrypt(password))
+    if rsync_password:
+        conn.rsync_encrypted_password = crypto.encrypt(rsync_password)
     db.add(conn)
     db.commit()
     db.refresh(conn)
@@ -28,8 +34,13 @@ def create_connection(db: Session, data: dict) -> NasConnection:
 
 def update_connection(db: Session, conn: NasConnection, data: dict) -> NasConnection:
     password = data.pop("password", None)
+    rsync_password = data.pop("rsync_password", None)
     if password:
         conn.encrypted_password = crypto.encrypt(password)
+    # Absent means "leave the stored secret alone", so an edit that does not
+    # retype the password cannot silently wipe it.
+    if rsync_password:
+        conn.rsync_encrypted_password = crypto.encrypt(rsync_password)
     for key, value in data.items():
         setattr(conn, key, value)
     db.commit()

@@ -18,6 +18,13 @@ from app.services.ftp_client import ConnectionTestResult, FtpError
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
 
+def _to_read(conn) -> ConnectionRead:
+    """Serialise a connection, reporting only WHETHER an rsync secret exists."""
+    read = ConnectionRead.model_validate(conn)
+    read.rsync_password_set = bool(conn.rsync_encrypted_password)
+    return read
+
+
 def _get_or_404(db: Session, conn_id: int):
     conn = connection_service.get_connection(db, conn_id)
     if conn is None:
@@ -40,14 +47,14 @@ def _test_to_response(result: ConnectionTestResult) -> ConnectionTestResponse:
 
 @router.get("", response_model=list[ConnectionRead])
 def list_connections(db: Session = Depends(get_db)):
-    return connection_service.list_connections(db)
+    return [_to_read(c) for c in connection_service.list_connections(db)]
 
 
 @router.post("", response_model=ConnectionRead, status_code=201)
 def create_connection(payload: ConnectionCreate, db: Session = Depends(get_db)):
     conn = connection_service.create_connection(db, payload.model_dump())
     audit.record(db, "connection.created", detail=conn.name)
-    return conn
+    return _to_read(conn)
 
 
 @router.post("/test", response_model=ConnectionTestResponse)
@@ -62,7 +69,7 @@ def test_unsaved(payload: ConnectionTestRequest):
 
 @router.get("/{conn_id}", response_model=ConnectionRead)
 def get_connection(conn_id: int, db: Session = Depends(get_db)):
-    return _get_or_404(db, conn_id)
+    return _to_read(_get_or_404(db, conn_id))
 
 
 @router.put("/{conn_id}", response_model=ConnectionRead)
@@ -70,7 +77,7 @@ def update_connection(conn_id: int, payload: ConnectionUpdate, db: Session = Dep
     conn = _get_or_404(db, conn_id)
     conn = connection_service.update_connection(db, conn, payload.model_dump(exclude_unset=True))
     audit.record(db, "connection.updated", detail=conn.name)
-    return conn
+    return _to_read(conn)
 
 
 @router.delete("/{conn_id}", status_code=204)

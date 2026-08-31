@@ -11,6 +11,7 @@ from app.constants import (
     JobType,
     MirrorMode,
     ScheduleType,
+    Transport,
     VerificationLevel,
 )
 
@@ -19,6 +20,8 @@ class JobBase(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     description: str | None = None
     job_type: JobType
+    # How bytes move. Defaults to ftp so every pre-rsync job is unchanged.
+    transport: Transport = "ftp"
     source_connection_id: int
     source_path: str = Field(min_length=1)
     destination_connection_id: int
@@ -31,6 +34,8 @@ class JobBase(BaseModel):
     archive_path: str | None = None
     include_filters: str | None = None
     exclude_filters: str | None = None
+    rsync_compress: bool = False
+    rsync_bandwidth_kbps: int | None = Field(default=None, ge=1)
     schedule_type: ScheduleType = "manual"
     schedule_value: str | None = None
 
@@ -43,6 +48,7 @@ class JobUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=160)
     description: str | None = None
     job_type: JobType | None = None
+    transport: Transport | None = None
     source_connection_id: int | None = None
     source_path: str | None = Field(default=None, min_length=1)
     destination_connection_id: int | None = None
@@ -55,6 +61,8 @@ class JobUpdate(BaseModel):
     archive_path: str | None = None
     include_filters: str | None = None
     exclude_filters: str | None = None
+    rsync_compress: bool | None = None
+    rsync_bandwidth_kbps: int | None = Field(default=None, ge=1)
     schedule_type: ScheduleType | None = None
     schedule_value: str | None = None
 
@@ -92,12 +100,15 @@ class PlanRead(BaseModel):
     archive_count: int
     transfer_bytes: int
     truncated: bool = False
+    # The exact command a run would issue, credentials removed. None for FTP.
+    command: str | None = None
 
 
 class JobPreviewRequest(BaseModel):
     """A possibly-unsaved job config to preview (FR-013)."""
 
     job_type: JobType
+    transport: Transport = "ftp"
     source_connection_id: int
     source_path: str = Field(min_length=1)
     destination_connection_id: int
@@ -107,3 +118,5 @@ class JobPreviewRequest(BaseModel):
     mirror_mode: MirrorMode = "safe"
     include_filters: str | None = None
     exclude_filters: str | None = None
+    rsync_compress: bool = False
+    rsync_bandwidth_kbps: int | None = Field(default=None, ge=1)

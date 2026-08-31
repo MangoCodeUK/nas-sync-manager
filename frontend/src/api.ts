@@ -1,6 +1,23 @@
 // Thin fetch wrapper for the backend API. Same-origin in production (nginx
 // proxies /api and /health); proxied to :8000 by Vite during local dev.
 
+export type Transport = "ftp" | "rsync";
+
+export interface NasMount {
+  host_path: string;
+  container_path: string;
+  read_only: boolean;
+}
+
+export interface RsyncEnvironment {
+  rsync_available: boolean;
+  rsync_version: string | null;
+  rsync_protocol: number | null;
+  rsync_error: string | null;
+  mount_root: string;
+  mounts: NasMount[];
+}
+
 export interface Health {
   status: string;
   version: string;
@@ -21,6 +38,7 @@ export interface Settings {
   retry_delay_seconds: number;
   max_auto_source_deletes: number;
   max_auto_destination_deletes: number;
+  max_delete_percent: number;
   require_manual_approval_for_deletes: boolean;
   preserve_timestamps: boolean;
   updated_at: string;
@@ -63,6 +81,15 @@ export interface Connection {
   passive_mode: boolean;
   timeout_seconds: number;
   description: string | null;
+  fs_root: string | null;
+  rsync_enabled: boolean;
+  rsync_mode: "daemon" | "ssh";
+  rsync_host: string | null;
+  rsync_port: number;
+  rsync_module: string | null;
+  rsync_username: string | null;
+  rsync_ssh_port: number;
+  rsync_password_set: boolean;
   last_test_status: string | null;
   last_test_at: string | null;
   created_at: string;
@@ -80,6 +107,15 @@ export interface ConnectionInput {
   passive_mode: boolean;
   timeout_seconds: number;
   description?: string | null;
+  fs_root?: string | null;
+  rsync_enabled?: boolean;
+  rsync_mode?: "daemon" | "ssh";
+  rsync_host?: string | null;
+  rsync_port?: number;
+  rsync_module?: string | null;
+  rsync_username?: string | null;
+  rsync_password?: string;
+  rsync_ssh_port?: number;
 }
 
 export interface TestResult {
@@ -98,6 +134,8 @@ export const api = {
   getSettings: () => request<Settings>("/api/settings"),
   updateSettings: (patch: Partial<Settings>) =>
     request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) }),
+
+  rsyncEnvironment: () => request<RsyncEnvironment>("/api/rsync/environment"),
 
   listConnections: () => request<Connection[]>("/api/connections"),
   createConnection: (body: ConnectionInput) =>
@@ -209,6 +247,7 @@ export interface Job {
   name: string;
   description: string | null;
   job_type: JobType;
+  transport: Transport;
   source_connection_id: number;
   source_path: string;
   destination_connection_id: number;
@@ -221,6 +260,8 @@ export interface Job {
   archive_path: string | null;
   include_filters: string | null;
   exclude_filters: string | null;
+  rsync_compress: boolean;
+  rsync_bandwidth_kbps: number | null;
   schedule_type: string;
   schedule_value: string | null;
   source_connection_name: string | null;
@@ -236,6 +277,7 @@ export interface JobInput {
   name: string;
   description?: string | null;
   job_type: JobType;
+  transport: Transport;
   source_connection_id: number;
   source_path: string;
   destination_connection_id: number;
@@ -248,12 +290,15 @@ export interface JobInput {
   archive_path?: string | null;
   include_filters?: string | null;
   exclude_filters?: string | null;
+  rsync_compress?: boolean;
+  rsync_bandwidth_kbps?: number | null;
   schedule_type: string;
   schedule_value?: string | null;
 }
 
 export interface JobPreviewInput {
   job_type: JobType;
+  transport: Transport;
   source_connection_id: number;
   source_path: string;
   destination_connection_id: number;
@@ -263,6 +308,8 @@ export interface JobPreviewInput {
   mirror_mode: string;
   include_filters?: string | null;
   exclude_filters?: string | null;
+  rsync_compress?: boolean;
+  rsync_bandwidth_kbps?: number | null;
 }
 
 export interface PlanItem {
@@ -284,6 +331,8 @@ export interface Plan {
   archive_count: number;
   transfer_bytes: number;
   truncated: boolean;
+  /** Exact command a run would issue, credentials removed. null for FTP. */
+  command: string | null;
 }
 
 export interface JobRun {
@@ -304,6 +353,9 @@ export interface JobRun {
   files_total: number;
   bytes_total: number;
   current_item: string | null;
+  transport: string | null;
+  exit_code: number | null;
+  safety_notes: string | null;
   summary: string | null;
   error_message: string | null;
   job_name?: string | null;

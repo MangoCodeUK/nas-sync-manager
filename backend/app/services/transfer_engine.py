@@ -577,6 +577,28 @@ def _handle_move(db, run, job, sftp, verified, settings_row) -> int:
     return 0
 
 
+def _dispatch(db: Session, run: JobRun, job: SyncJob) -> None:
+    """Execute a run through its transport's provider.
+
+    FTP resolves straight back to :func:`_do_work` below, so the original engine
+    is untouched. A provider that raises (an rsync safety veto, say) must still
+    leave the run recorded as finished rather than silently stuck at "running".
+    """
+    from app.services import providers
+
+    try:
+        providers.get(getattr(job, "transport", "ftp")).execute(db, run, job)
+    except Exception as exc:  # noqa: BLE001 - the run must always be closed out
+        if run.status == "running":
+            run.status = "failed"
+            run.error_message = str(exc)
+            run.completed_at = utcnow()
+    finally:
+        job.last_run_at = utcnow()
+        job.last_status = run.status
+        db.commit()
+
+
 def run_sync(db: Session, job: SyncJob, run_type: str = "manual") -> JobRun:
     """Run a job synchronously (used by tests and the scheduler)."""
     if is_running(job.id):
@@ -584,7 +606,7 @@ def run_sync(db: Session, job: SyncJob, run_type: str = "manual") -> JobRun:
     _mark(job.id)
     try:
         run = create_run(db, job, run_type)
-        _do_work(db, run, job)
+        _dispatch(db, run, job)
         return run
     finally:
         _unmark(job.id)
@@ -609,7 +631,7 @@ def execute_async(run_id: int, job_id: int) -> None:
                 run = db.get(JobRun, run_id)
                 job = db.get(SyncJob, job_id)
                 if run and job:
-                    _do_work(db, run, job)
+                    _dispatch(db, run, job)
         finally:
             _unmark(job_id)
             _clear_cancel(job_id)

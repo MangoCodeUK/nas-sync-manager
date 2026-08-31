@@ -26,6 +26,10 @@ class JobRunRead(BaseModel):
     files_total: int = 0
     bytes_total: int = 0
     current_item: str | None = None
+    transport: str | None = None
+    exit_code: int | None = None
+    # What the deletion guards checked, for destructive runs.
+    safety_notes: str | None = None
     summary: str | None
     error_message: str | None
     job_name: str | None = None

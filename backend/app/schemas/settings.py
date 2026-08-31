@@ -23,6 +23,7 @@ class SettingsRead(BaseModel):
     retry_delay_seconds: int
     max_auto_source_deletes: int
     max_auto_destination_deletes: int
+    max_delete_percent: int
     require_manual_approval_for_deletes: bool
     preserve_timestamps: bool
     updated_at: dt.datetime
@@ -43,5 +44,7 @@ class SettingsUpdate(BaseModel):
     retry_delay_seconds: int | None = Field(default=None, ge=0, le=3600)
     max_auto_source_deletes: int | None = Field(default=None, ge=0)
     max_auto_destination_deletes: int | None = Field(default=None, ge=0)
+    # Percentage of the destination that may be removed in one run.
+    max_delete_percent: int | None = Field(default=None, ge=1, le=100)
     require_manual_approval_for_deletes: bool | None = None
     preserve_timestamps: bool | None = None

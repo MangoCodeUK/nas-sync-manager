@@ -49,6 +49,25 @@ class NasConnection(TimestampMixin, Base):
     last_test_status: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_test_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # --- rsync transport (optional; every FTP field above is untouched) -----
+    # A connection describes a NAS, not a protocol: the same device may be
+    # reachable over FTP, over rsync, or both. Jobs pick a transport per job.
+    #
+    # fs_root is the device's real filesystem root (/Volume1 on the new NAS,
+    # /mnt/md0 on the old one) as opposed to the FTP-relative root_path above -
+    # they are different namespaces for the same files. Whether a path is
+    # reachable *locally* is not stored: services/mounts.py answers that from
+    # what is actually bind-mounted, so it cannot go stale.
+    fs_root: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    rsync_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    rsync_mode: Mapped[str] = mapped_column(String(8), default="daemon")  # daemon | ssh
+    rsync_host: Mapped[str | None] = mapped_column(String(255), nullable=True)  # falls back to host
+    rsync_port: Mapped[int] = mapped_column(Integer, default=873)
+    rsync_module: Mapped[str | None] = mapped_column(String(255), nullable=True)  # daemon mode
+    rsync_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rsync_encrypted_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rsync_ssh_port: Mapped[int] = mapped_column(Integer, default=22)
+
 
 class SyncJob(TimestampMixin, Base):
     __tablename__ = "sync_jobs"
@@ -56,7 +75,11 @@ class SyncJob(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The two independent axes: WHAT the job does, and HOW bytes move. job_type
+    # predates rsync and already means the right thing, so transport is simply
+    # added alongside it. Defaulting to "ftp" keeps every existing job identical.
     job_type: Mapped[str] = mapped_column(String(16))  # copy | mirror | move
+    transport: Mapped[str] = mapped_column(String(8), default="ftp")  # ftp | rsync
 
     source_connection_id: Mapped[int] = mapped_column(ForeignKey("nas_connections.id"))
     source_path: Mapped[str] = mapped_column(String(1024))
@@ -73,6 +96,12 @@ class SyncJob(TimestampMixin, Base):
     archive_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     include_filters: Mapped[str | None] = mapped_column(Text, nullable=True)  # newline-separated
     exclude_filters: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # rsync-only tuning. Compression defaults OFF: on a gigabit LAN full of
+    # already-compressed media it burns CPU these devices do not have, for
+    # nothing (FRD performance note).
+    rsync_compress: Mapped[bool] = mapped_column(Boolean, default=False)
+    rsync_bandwidth_kbps: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     schedule_type: Mapped[str] = mapped_column(String(16), default="manual")
     schedule_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -111,6 +140,13 @@ class JobRun(Base):
     files_total: Mapped[int] = mapped_column(Integer, default=0)
     bytes_total: Mapped[int] = mapped_column(BigInteger, default=0)
     current_item: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Which transport ran, and rsync's raw exit code when one was involved -
+    # the single most useful thing when diagnosing a failure after the fact.
+    transport: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # What the deletion guards actually checked, recorded for destructive runs.
+    safety_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -180,6 +216,11 @@ class AppSettings(Base):
     # Safety: never auto-delete by default; require manual approval for all deletes.
     max_auto_source_deletes: Mapped[int] = mapped_column(Integer, default=0)
     max_auto_destination_deletes: Mapped[int] = mapped_column(Integer, default=0)
+    # Proportional guard, which the absolute limits above cannot express: a
+    # job that would remove most of a large destination is almost always a
+    # mistake (a mistyped path, or a source that came back empty), however
+    # small the file count happens to be.
+    max_delete_percent: Mapped[int] = mapped_column(Integer, default=10)
     require_manual_approval_for_deletes: Mapped[bool] = mapped_column(Boolean, default=True)
     preserve_timestamps: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[dt.datetime] = mapped_column(

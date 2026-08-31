@@ -30,6 +30,16 @@ export function PlanPreview({ plan, title }: { plan: Plan; title?: string }) {
         </ul>
       )}
 
+      {plan.command && (
+        <details className="plan-command">
+          <summary>Show the command this job runs</summary>
+          {/* Safe to display: the password travels in the environment, never in
+              the command line, so there is nothing here to redact away. */}
+          <pre className="mono">{plan.command}</pre>
+          <p className="muted small">Credentials are never included in the command.</p>
+        </details>
+      )}
+
       <div className="plan-items">
         <table>
           <thead>

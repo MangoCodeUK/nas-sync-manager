@@ -1,11 +1,24 @@
-import { useState } from "react";
-import { api, ApiError, type Connection, type JobInput, type Plan } from "../api";
+import { useEffect, useState } from "react";
+import {
+  api,
+  ApiError,
+  type Connection,
+  type JobInput,
+  type Plan,
+  type RsyncEnvironment,
+} from "../api";
 import { PlanPreview } from "./PlanPreview";
 
 const JOB_TYPES = [
   ["copy", "Copy - add new files, never delete"],
   ["mirror", "Mirror - keep destination aligned with source"],
   ["move", "Move - copy, verify, then delete source (with approval)"],
+] as const;
+
+// What the job does and how bytes move are separate choices.
+const TRANSPORTS = [
+  ["ftp", "FTP - works with any share, no setup"],
+  ["rsync", "rsync - faster, only transfers what changed"],
 ] as const;
 
 const CONFLICTS = [
@@ -80,6 +93,7 @@ export function JobEditor({
       setPlan(
         await api.previewJob({
           job_type: form.job_type,
+          transport: form.transport,
           source_connection_id: form.source_connection_id,
           source_path: form.source_path,
           destination_connection_id: form.destination_connection_id,
@@ -89,6 +103,8 @@ export function JobEditor({
           mirror_mode: form.mirror_mode,
           include_filters: form.include_filters,
           exclude_filters: form.exclude_filters,
+          rsync_compress: form.rsync_compress,
+          rsync_bandwidth_kbps: form.rsync_bandwidth_kbps,
         })
       );
     } catch (e) {
@@ -127,6 +143,16 @@ export function JobEditor({
             {JOB_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
+        <label className="field">
+          <span>Transport</span>
+          <select
+            value={form.transport}
+            onChange={(e) => set("transport", e.target.value as JobInput["transport"])}
+          >
+            {TRANSPORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+        {form.transport === "rsync" && <RsyncNotice />}
         <label className="field">
           <span>Description (optional)</span>
           <input value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} />
@@ -204,6 +230,35 @@ export function JobEditor({
         </div>
       </fieldset>
 
+      {form.transport === "rsync" && (
+        <fieldset>
+          <legend>rsync options</legend>
+          <label className="field check">
+            <input
+              type="checkbox"
+              checked={form.rsync_compress ?? false}
+              onChange={(e) => set("rsync_compress", e.target.checked)}
+            />
+            <span>Compress during transfer</span>
+          </label>
+          <p className="muted small">
+            Leave off for media on a local network - compressing already-compressed
+            files costs CPU on both devices and saves almost nothing.
+          </p>
+          <label className="field">
+            <span>Bandwidth limit (KB/s, blank = unlimited)</span>
+            <input
+              type="number"
+              min={1}
+              value={form.rsync_bandwidth_kbps ?? ""}
+              onChange={(e) =>
+                set("rsync_bandwidth_kbps", e.target.value ? Number(e.target.value) : null)
+              }
+            />
+          </label>
+        </fieldset>
+      )}
+
       <fieldset>
         <legend>Schedule</legend>
         <div className="field-row">
@@ -242,5 +297,57 @@ export function JobEditor({
         </button>
       </div>
     </form>
+  );
+}
+
+
+/**
+ * What rsync can actually reach right now.
+ *
+ * Shown the moment rsync is selected, because the commonest failure is picking a
+ * path whose share is not bind-mounted into the container - far better to say so
+ * here than to let the job fail later with a raw rsync error.
+ */
+function RsyncNotice() {
+  const [env, setEnv] = useState<RsyncEnvironment | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    api.rsyncEnvironment().then(setEnv).catch(() => setFailed(true));
+  }, []);
+
+  if (failed) return <p className="muted small">Could not check the rsync environment.</p>;
+  if (!env) return <p className="muted small">Checking rsync…</p>;
+
+  if (!env.rsync_available) {
+    return (
+      <p className="error-text">
+        rsync is not available in this container{env.rsync_error ? `: ${env.rsync_error}` : "."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="muted small">
+      <p>
+        rsync {env.rsync_version} (protocol {env.rsync_protocol}).{" "}
+        {env.mounts.length === 0
+          ? "No NAS shares are mounted, so rsync jobs have nowhere local to read or write."
+          : "Shares available to rsync on this device:"}
+      </p>
+      {env.mounts.length > 0 && (
+        <ul className="plan-warnings">
+          {env.mounts.map((m) => (
+            <li key={m.container_path}>
+              <code>{m.host_path}</code> {m.read_only ? "(read-only - source only)" : "(read/write)"}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p>
+        A path on the other device is reached over rsync instead, using that
+        connection's rsync settings.
+      </p>
+    </div>
   );
 }

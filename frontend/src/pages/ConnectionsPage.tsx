@@ -12,6 +12,15 @@ const EMPTY: ConnectionInput = {
   passive_mode: true,
   timeout_seconds: 30,
   description: "",
+  fs_root: "",
+  rsync_enabled: false,
+  rsync_mode: "daemon",
+  rsync_host: "",
+  rsync_port: 873,
+  rsync_module: "",
+  rsync_username: "",
+  rsync_password: "",
+  rsync_ssh_port: 22,
 };
 
 export function ConnectionsPage() {
@@ -21,6 +30,10 @@ export function ConnectionsPage() {
   const [test, setTest] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The saved record behind the form, so the password field can say whether one
+  // is already stored without the API ever returning the secret itself.
+  const current = editingId ? connections.find((c) => c.id === editingId) : undefined;
 
   async function refresh() {
     try {
@@ -203,6 +216,108 @@ export function ConnectionsPage() {
               <span>Description (optional)</span>
               <input value={editing.description ?? ""} onChange={(e) => set("description", e.target.value)} />
             </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>rsync (optional)</legend>
+            <label className="field">
+              <span>Filesystem root on this device</span>
+              <input
+                placeholder="/Volume1 or /mnt/md0"
+                value={editing.fs_root ?? ""}
+                onChange={(e) => set("fs_root", e.target.value)}
+              />
+            </label>
+            <p className="muted small">
+              The device's real path, which is not the same as the FTP root above.
+              The 14&nbsp;TB device uses <code>/Volume1</code>; the 8&nbsp;TB one uses{" "}
+              <code>/mnt/md0</code>.
+            </p>
+            <label className="field check">
+              <input
+                type="checkbox"
+                checked={editing.rsync_enabled ?? false}
+                onChange={(e) => set("rsync_enabled", e.target.checked)}
+              />
+              <span>This device runs an rsync server</span>
+            </label>
+            {editing.rsync_enabled && (
+              <>
+                <label className="field">
+                  <span>Mode</span>
+                  <select
+                    value={editing.rsync_mode ?? "daemon"}
+                    onChange={(e) => set("rsync_mode", e.target.value as "daemon" | "ssh")}
+                  >
+                    <option value="daemon">Daemon - the device's rsync service (port 873)</option>
+                    <option value="ssh">SSH - tunnel rsync over SSH</option>
+                  </select>
+                </label>
+                <div className="field-row">
+                  <label className="field">
+                    <span>rsync host (blank = same as above)</span>
+                    <input
+                      value={editing.rsync_host ?? ""}
+                      onChange={(e) => set("rsync_host", e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{editing.rsync_mode === "ssh" ? "SSH port" : "rsync port"}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={
+                        editing.rsync_mode === "ssh"
+                          ? editing.rsync_ssh_port ?? 22
+                          : editing.rsync_port ?? 873
+                      }
+                      onChange={(e) =>
+                        set(
+                          editing.rsync_mode === "ssh" ? "rsync_ssh_port" : "rsync_port",
+                          Number(e.target.value)
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+                {editing.rsync_mode === "daemon" && (
+                  <label className="field">
+                    <span>Module</span>
+                    <input
+                      placeholder="RsyncSourceTest"
+                      value={editing.rsync_module ?? ""}
+                      onChange={(e) => set("rsync_module", e.target.value)}
+                    />
+                  </label>
+                )}
+                <div className="field-row">
+                  <label className="field">
+                    <span>rsync username</span>
+                    <input
+                      placeholder="nassync"
+                      value={editing.rsync_username ?? ""}
+                      onChange={(e) => set("rsync_username", e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>
+                      rsync password
+                      {editingId && current?.rsync_password_set ? " (saved - leave blank to keep)" : ""}
+                    </span>
+                    <input
+                      type="password"
+                      value={editing.rsync_password ?? ""}
+                      onChange={(e) => set("rsync_password", e.target.value)}
+                    />
+                  </label>
+                </div>
+                <p className="muted small">
+                  Stored encrypted, and never sent back to this page. It is passed to
+                  rsync out of band, so it never appears in a command or a log.
+                </p>
+              </>
+            )}
           </fieldset>
 
           {test && (
