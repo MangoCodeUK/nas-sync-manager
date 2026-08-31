@@ -120,3 +120,62 @@ def test_move_archive_strategy(client, ftp_server):
     archived = list((root / "_ARCHIVE").rglob("song.mp3"))
     assert len(archived) == 1
     assert archived[0].read_text() == "m" * 30
+
+
+# --- rsync move must never queue a file it did not transfer -----------------
+def test_move_never_queues_an_excluded_source_file(monkeypatch):
+    """Found live: a scheduled rsync move queued five #recycle files for deletion.
+
+    The job excluded #recycle/, so those files were never transferred and are not
+    verified at the destination - yet they were offered for deletion from the
+    source, which for excluded data is the only copy in existence. Only files the
+    job actually transfers may ever be queued.
+    """
+    from types import SimpleNamespace
+
+    from app.services import providers, rsync_client
+
+    source_listing = [
+        ("Test1.txt", 11),
+        ("TestNEW.txt", 0),
+        ("#recycle/NewFile.txt", 5),
+        ("#recycle/New A/test2.csv", 7),
+        ("#recycle/.data", 3),
+    ]
+
+    queued: list[str] = []
+
+    class _DB:
+        def add(self, row):
+            queued.append(row.source_path)
+
+        def commit(self):
+            pass
+
+    verified = SimpleNamespace(returncode=0, stdout="", stderr="", argv=[])
+    monkeypatch.setattr(rsync_client, "run", lambda *a, **k: verified)
+    monkeypatch.setattr(rsync_client, "build_argv", lambda **k: ["rsync"])
+    monkeypatch.setattr(rsync_client, "list_files", lambda *a, **k: source_listing)
+
+    job = SimpleNamespace(
+        id=1,
+        job_type="move",
+        mirror_mode="safe",
+        conflict_strategy="overwrite_if_newer_or_size_differs",
+        include_filters=None,
+        exclude_filters="#recycle/",
+        rsync_compress=False,
+        rsync_bandwidth_kbps=None,
+        source_path="/mnt/md0/RsyncSourceTest",
+        destination_path="/Volume1/RsyncTest",
+    )
+    run = SimpleNamespace(id=9, status="success", error_message=None, summary="")
+    endpoint = rsync_client.Endpoint(spec="x", is_local=True)
+
+    providers.RsyncProvider()._queue_source_deletions(_DB(), run, job, endpoint, endpoint, None)
+
+    assert queued == [
+        "/mnt/md0/RsyncSourceTest/Test1.txt",
+        "/mnt/md0/RsyncSourceTest/TestNEW.txt",
+    ]
+    assert not any("#recycle" in p for p in queued)

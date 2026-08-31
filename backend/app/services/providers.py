@@ -289,7 +289,21 @@ class RsyncProvider:
             db.commit()
             return
 
+        # Only files the job actually transfers may be queued. An excluded file
+        # was never copied, so it is NOT verified at the destination - queueing it
+        # would offer for deletion the only copy that exists. The verification
+        # dry-run above proves the filtered set is in sync; it says nothing about
+        # anything the filters removed.
+        from app.services.planner import is_filtered, parse_filters
+
+        includes = parse_filters(job.include_filters)
+        excludes = parse_filters(job.exclude_filters)
+
+        queued = 0
         for relative, size in listed:
+            if is_filtered(relative, includes, excludes):
+                continue
+            queued += 1
             db.add(
                 PendingDeletion(
                     job_id=job.id,
@@ -301,6 +315,7 @@ class RsyncProvider:
                     approved=False,
                 )
             )
+        run.summary = (run.summary or "") + f" - {queued} source file(s) awaiting approval"
         db.commit()
 
 
