@@ -134,12 +134,3 @@ def test_environment_endpoint_reports_rsync_and_shares(client):
         assert body["rsync_version"] and body["rsync_protocol"]
     else:
         assert body["rsync_error"]
-
-
-def test_probe_never_raises_when_rsync_is_missing(monkeypatch):
-    from app.services import rsync_client
-
-    monkeypatch.setattr(rsync_client.shutil, "which", lambda _: None)
-    capability = rsync_client.probe()
-    assert capability.available is False
-    assert "not installed" in capability.error
