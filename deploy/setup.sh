@@ -11,10 +11,17 @@ DOCKER_BIN="$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -
 if docker compose version >/dev/null 2>&1; then DC="docker compose";
 elif command -v docker-compose >/dev/null 2>&1; then DC="docker-compose";
 else echo "Docker Compose not found. Install the Docker app in TOS first." >&2; exit 1; fi
-# Two files: the stack, and the share list that is meant to be edited.
-DC="$DC -f docker-compose.prod.yml -f docker-compose.shares.yml"
 
 [ -f .env ] || { cp .env.example .env; echo "Created .env from the template. Edit IMAGE_OWNER and WEB_PORT if needed."; }
+
+# Which compose files make up the stack lives in .env, not in this script - see
+# the COMPOSE_FILE comment in .env.example. The scripts on the NAS are copies
+# that no update refreshes, so a hard-coded file list here would be free to
+# drift away from the repo and quietly deploy the wrong stack. Must be settled
+# before the first compose command below.
+if ! grep -q '^COMPOSE_FILE=' .env 2>/dev/null; then
+  echo 'COMPOSE_FILE=docker-compose.prod.yml:docker-compose.shares.yml' >> .env
+fi
 
 # shellcheck disable=SC1091
 . ./.env 2>/dev/null || true

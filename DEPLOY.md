@@ -7,8 +7,17 @@
 
 The NAS runs **prebuilt images** pulled from GitHub Container Registry (GHCR).
 GitHub Actions builds `nas-sync-manager-backend` and `nas-sync-manager-frontend`
-on every push to `main`. The NAS never builds code — it only needs two files in the
-app folder: `.env` (set once) and `docker-compose.prod.yml`.
+on every push to `main`. The NAS never builds code — it only needs three files in
+the app folder: `.env` (set once), `docker-compose.prod.yml` (the stack) and
+`docker-compose.shares.yml` (the share list you edit).
+
+`.env` carries `COMPOSE_FILE=docker-compose.prod.yml:docker-compose.shares.yml`,
+which is what ties the last two together. The deploy scripts pass **no `-f`
+flags** and read that instead — deliberately, because the scripts on the NAS are
+copies that no update refreshes, so any file list they hard-coded would be free
+to drift. Run bare `docker-compose up -d` / `ps` / `logs` in that folder; adding
+`-f docker-compose.prod.yml` by hand overrides `COMPOSE_FILE` and drops every
+share mount without any visible error.
 
 A change ships as: **push to `main` -> CI builds images -> NAS pulls them.** The
 dev-side menu (`deploy/manage.ps1`) does the whole loop for you.
@@ -18,8 +27,10 @@ dev-side menu (`deploy/manage.ps1`) does the whole loop for you.
 1. Install the **Docker** ("Container Manager") app from the TOS App Center.
 2. Enable **SSH** in Control Panel (TerraMaster SSH is commonly on port **9222**).
 3. Create the app folder, e.g. `/Volume1/<share>/NAS Sync`, and copy this repo's
-   `docker-compose.prod.yml`, `.env.example`, and the `deploy/` folder into it
-   (the dev menu copies the compose file for you on every deploy).
+   `docker-compose.prod.yml`, `docker-compose.shares.yml`, `.env.example`, and
+   the `deploy/` folder into it (the dev menu copies both compose files for you
+   on every deploy — but not the `deploy/` scripts, so re-copy those by hand
+   when they change).
 
 ## First-time setup (on the NAS)
 

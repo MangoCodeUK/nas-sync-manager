@@ -1,6 +1,11 @@
 # Production stack: PREBUILT images pulled from ghcr.io (the NAS never builds).
 # On the NAS:  sh deploy/setup.sh   (first time)  /  sh deploy/update.sh  (updates)
-# Or directly: docker compose -f docker-compose.prod.yml up -d
+#
+# Or directly: docker compose up -d      <- no -f flags, on purpose.
+# COMPOSE_FILE in .env names this file AND docker-compose.shares.yml. Passing
+# "-f docker-compose.prod.yml" yourself OVERRIDES that and silently drops every
+# share bind mount: the stack still comes up healthy, and the first rsync job
+# then fails with "not bind-mounted into the container".
 services:
   backend:
     image: ghcr.io/${IMAGE_OWNER:-changeme}/nas-sync-manager-backend:${IMAGE_TAG:-latest}

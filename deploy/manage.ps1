@@ -108,9 +108,16 @@ function Update-Nas {
     # command (PowerShell would strip them before ssh.exe sees them).
     $dockerPath = 'export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
     $pickDC = '{ docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; }'
-    $files = '-f docker-compose.prod.yml -f docker-compose.shares.yml'
-    $run = "`$DC $files pull && `$DC $files up -d && `$DC $files ps"
-    $cmd = 'cd ''' + $dir + ''' && cat > docker-compose.prod.yml && ' + $dockerPath + ' && ' + $pickDC + ' && ' + $run
+    # No -f flags: which files make up the stack comes from COMPOSE_FILE in the
+    # NAS's .env (see .env.example). A command that names the files itself can
+    # fall behind the repo and deploy a partial stack - that is what dropped
+    # every share bind mount on 2026-09-01. Settle the line first for an .env
+    # that predates it. The braces are load-bearing: && and || are equal
+    # precedence and left-associative, so an unwrapped '||' would swallow the
+    # rest of the chain whenever the grep succeeds.
+    $ensureList = '{ grep -q ''^COMPOSE_FILE='' .env 2>/dev/null || echo ''COMPOSE_FILE=docker-compose.prod.yml:docker-compose.shares.yml'' >> .env; }'
+    $run = "`$DC pull && `$DC up -d && `$DC ps"
+    $cmd = 'cd ''' + $dir + ''' && cat > docker-compose.prod.yml && ' + $ensureList + ' && ' + $dockerPath + ' && ' + $pickDC + ' && ' + $run
 
     Write-Host "Deploying to ${target}:$dir ..." -ForegroundColor Cyan
     # Send the share list first (it is the file people edit), then the stack.
@@ -133,7 +140,7 @@ function Show-Status {
     $cfg = Read-NasEnv
     if ($cfg.NAS_HOST) {
         $dockerPath = 'export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
-        $cmd = $dockerPath + ' && cd ''' + $cfg.NAS_DIR + ''' && { docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; } && $DC -f docker-compose.prod.yml -f docker-compose.shares.yml ps'
+        $cmd = $dockerPath + ' && cd ''' + $cfg.NAS_DIR + ''' && { docker compose version >/dev/null 2>&1 && DC=''docker compose'' || DC=''docker-compose''; } && $DC ps'
         ssh -p $cfg.NAS_PORT "$($cfg.NAS_USER)@$($cfg.NAS_HOST)" $cmd
     } else { Write-Host "(NAS not configured yet)" }
 }

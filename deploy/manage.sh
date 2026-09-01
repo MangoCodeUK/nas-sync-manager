@@ -6,7 +6,10 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 NAS_ENV="$SCRIPT_DIR/nas.env"
-COMPOSE_FILE="docker-compose.prod.yml"
+# Local repo filenames to push. Named PROD_FILE/SHARES_FILE, not COMPOSE_FILE,
+# because COMPOSE_FILE is now compose's own variable on the NAS - see .env.example.
+PROD_FILE="docker-compose.prod.yml"
+SHARES_FILE="docker-compose.shares.yml"
 
 load_nas_env() { [ -f "$NAS_ENV" ] && . "$NAS_ENV" || true; }
 
@@ -70,10 +73,20 @@ update_nas() {
     ensure_nas_config
     docker_path='export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
     pick_dc='{ docker compose version >/dev/null 2>&1 && DC="docker compose" || DC="docker-compose"; }'
-    run='$DC -f docker-compose.prod.yml pull && $DC -f docker-compose.prod.yml up -d && $DC -f docker-compose.prod.yml ps'
-    cmd="cd '$NAS_DIR' && cat > docker-compose.prod.yml && $docker_path && $pick_dc && $run"
+    # No -f flags: the file list comes from COMPOSE_FILE in the NAS's .env, so
+    # this command cannot deploy a partial stack even if it is out of date. It
+    # used to name only prod.yml, which is what silently dropped every share
+    # bind mount on 2026-09-01. Settle the line first in case .env predates it.
+    # Braces matter: && and || are left-associative and equal precedence, so an
+    # unwrapped "grep || echo" here would swallow everything after it when the
+    # grep succeeds, and the deploy would silently never run.
+    ensure_list="{ grep -q '^COMPOSE_FILE=' .env 2>/dev/null || echo 'COMPOSE_FILE=docker-compose.prod.yml:docker-compose.shares.yml' >> .env; }"
+    run='$DC pull && $DC up -d && $DC ps'
     echo "Deploying to $NAS_USER@$NAS_HOST:$NAS_DIR ..."
-    ssh -p "$NAS_PORT" "$NAS_USER@$NAS_HOST" "$cmd" < "$REPO_ROOT/$COMPOSE_FILE"
+    # The share list first (it is the file people edit), then the stack.
+    ssh -p "$NAS_PORT" "$NAS_USER@$NAS_HOST" "cd '$NAS_DIR' && cat > $SHARES_FILE" < "$REPO_ROOT/$SHARES_FILE"
+    cmd="cd '$NAS_DIR' && cat > $PROD_FILE && $ensure_list && $docker_path && $pick_dc && $run"
+    ssh -p "$NAS_PORT" "$NAS_USER@$NAS_HOST" "$cmd" < "$REPO_ROOT/$PROD_FILE"
     echo "Deployed. Hard-refresh the browser (Ctrl+Shift+R)."
 }
 
@@ -85,7 +98,7 @@ show_status() {
     load_nas_env
     if [ -n "${NAS_HOST:-}" ]; then
         docker_path='export PATH=$(ls -d /Volume*/@apps/DockerEngine/dockerd/bin 2>/dev/null | head -1):$PATH'
-        ssh -p "$NAS_PORT" "$NAS_USER@$NAS_HOST" "$docker_path && cd '$NAS_DIR' && { docker compose version >/dev/null 2>&1 && DC='docker compose' || DC='docker-compose'; } && \$DC -f docker-compose.prod.yml ps"
+        ssh -p "$NAS_PORT" "$NAS_USER@$NAS_HOST" "$docker_path && cd '$NAS_DIR' && { docker compose version >/dev/null 2>&1 && DC='docker compose' || DC='docker-compose'; } && \$DC ps"
     else echo "(NAS not configured yet)"; fi
 }
 
