@@ -244,6 +244,25 @@ def build_argv(
     # different account databases.
     argv += ["-rlt"]
 
+    # Destination modes are set explicitly, never inherited. With --perms off,
+    # rsync gives a NEW file the source's mode masked by the receiver's umask -
+    # and the TOS shares here are ACL-based with no "other" bits at all
+    # (0770 dirs, 0760 files, owned by a single account). Masked by the
+    # receiving daemon's umask of 022 that lands as 0750/0740 root:root on the
+    # far device, which is unreadable to Plex: it cannot even descend into the
+    # folders, so a scan reports the films as missing rather than as denied.
+    # Measured on the 2026 Films run of 2026-08-31 - 89 files, every one of them
+    # invisible, while the files already there from the old FTP jobs were fine
+    # because the FTP server had applied its own permissive default.
+    #
+    # D777,F666 matches what the rest of the destination library already is, so
+    # rsync-copied media behaves exactly like FTP-copied media. --perms is what
+    # makes the setting authoritative: without it these modes would themselves
+    # be masked by the receiver's umask, and files already on the destination
+    # would keep whatever broken mode they were given. With it, re-running a job
+    # repairs earlier copies in place - no re-transfer, since the data matches.
+    argv += ["--perms", "--chmod=D777,F666"]
+
     # Spaces are common in these shares ("TV Shows"). Without this, the remote
     # end re-splits the path and the transfer silently targets somewhere else.
     argv += ["--protect-args"]

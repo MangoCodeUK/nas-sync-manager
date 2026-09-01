@@ -169,6 +169,44 @@ def test_protect_args_is_always_set():
     assert "--protect-args" in _argv()
 
 
+def test_destination_permissions_are_forced_not_inherited():
+    # The 2026 Films regression: with --perms off, rsync masks the source mode
+    # by the receiver's umask. The TOS shares are 0770/0760 with no "other"
+    # bits, so the far end got 0750/0740 and Plex could not descend into the
+    # folders at all. Both flags matter - --chmod alone would still be masked,
+    # and would leave already-copied files on their broken mode.
+    argv = _argv()
+    assert "--perms" in argv
+    assert "--chmod=D777,F666" in argv
+
+
+def test_permissions_are_forced_on_real_runs_too_not_just_previews():
+    # A preview that sets modes the real run does not would be worse than
+    # useless, so this is asserted on the non-dry-run path explicitly.
+    source = rsync_client.build_endpoint(
+        connection(), "/mnt/md0/RsyncSourceTest", write=False, available=[]
+    )
+    destination = rsync_client.build_endpoint(
+        connection(name="NAS 5", fs_root="/Volume1"),
+        "/Volume1/RsyncTest",
+        write=True,
+        available=LOCAL_MOUNT,
+    )
+    argv = rsync_client.build_argv(
+        source=source, destination=destination, job=job(), dry_run=False
+    )
+    assert "--perms" in argv
+    assert "--chmod=D777,F666" in argv
+
+
+def test_archive_mode_is_never_used():
+    # -a implies -o/-g, which lie between devices with different account
+    # databases. The mode is set by --chmod instead, deliberately.
+    argv = _argv()
+    assert "-a" not in argv
+    assert "--owner" not in argv and "--group" not in argv
+
+
 def test_delete_only_appears_for_a_strict_mirror():
     assert "--delete" not in _argv(job_type="copy")
     assert "--delete" not in _argv(job_type="mirror", mirror_mode="safe")
