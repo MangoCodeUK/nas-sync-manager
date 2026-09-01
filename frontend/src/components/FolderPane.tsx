@@ -8,6 +8,7 @@ import {
   type FolderSize,
   type Transport,
 } from "../api";
+import { rootFor } from "../paths";
 
 export interface PaneSelection {
   connId: number | null;
@@ -151,11 +152,4 @@ export function FolderPane({
       )}
     </div>
   );
-}
-
-
-/** Where a pane should start for a given transport. */
-export function rootFor(conn: Connection | undefined, transport: Transport): string {
-  if (!conn) return "/";
-  return transport === "rsync" ? conn.fs_root || "/" : conn.root_path || "/";
 }

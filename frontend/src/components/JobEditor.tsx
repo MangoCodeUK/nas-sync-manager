@@ -7,6 +7,7 @@ import {
   type Plan,
   type RsyncEnvironment,
 } from "../api";
+import { retargetPath } from "../paths";
 import { PlanPreview } from "./PlanPreview";
 
 const JOB_TYPES = [
@@ -94,15 +95,30 @@ export function JobEditor({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retargeted, setRetargeted] = useState(false);
 
   function set<K extends keyof JobInput>(k: K, v: JobInput[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
+  // The two transports name the same folder differently, so paths carried over
+  // from the other one are wrong for this one - most often paths that came from
+  // Browse, which shows whichever names the transport it browsed over uses.
+  // Rewriting them here means the mistake never reaches Preview, and they stay
+  // visible and editable, so nothing is decided behind anyone's back.
   function setTransport(next: JobInput["transport"]) {
+    const source = connections.find((c) => c.id === form.source_connection_id);
+    const dest = connections.find((c) => c.id === form.destination_connection_id);
+    const source_path = retargetPath(source, form.transport, next, form.source_path);
+    const destination_path = retargetPath(dest, form.transport, next, form.destination_path);
+    setRetargeted(
+      source_path !== form.source_path || destination_path !== form.destination_path
+    );
     setForm((f) => ({
       ...f,
       transport: next,
+      source_path,
+      destination_path,
       // Only ever fill a blank box - never overwrite what someone typed.
       exclude_filters:
         next === "rsync" && !(f.exclude_filters ?? "").trim()
@@ -178,6 +194,14 @@ export function JobEditor({
             {TRANSPORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
+        {retargeted && (
+          <p className="muted small">
+            Source and destination were rewritten as{" "}
+            {form.transport === "rsync" ? "filesystem" : "FTP"} paths, which is how{" "}
+            {form.transport === "rsync" ? "rsync" : "FTP"} addresses folders on these
+            devices. Check them below before previewing.
+          </p>
+        )}
         {form.transport === "rsync" && <RsyncNotice />}
         <label className="field">
           <span>Description (optional)</span>

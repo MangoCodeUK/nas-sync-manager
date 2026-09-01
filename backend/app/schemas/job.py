@@ -99,6 +99,10 @@ class PlanRead(BaseModel):
     delete_count: int
     archive_count: int
     transfer_bytes: int
+    # Files already identical at the destination that only need re-stamping.
+    # Separate from transfer_bytes because none of it crosses the network.
+    inplace_count: int = 0
+    inplace_bytes: int = 0
     truncated: bool = False
     # The exact command a run would issue, credentials removed. None for FTP.
     command: str | None = None

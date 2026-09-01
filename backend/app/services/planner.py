@@ -27,6 +27,12 @@ class PlanItem:
     destination_path: str | None
     size: int = 0
     reason: str = ""
+    # Whether this item moves file data. rsync can update a file that already
+    # matches byte for byte - re-stamping its mode or timestamp in place - and
+    # such an entry is still an update, but not one byte of it crosses the
+    # network. The FTP engine only ever sends whole files, so it takes the
+    # default and its plans are unchanged.
+    transfers_data: bool = True
 
 
 @dataclass
@@ -71,7 +77,25 @@ class Plan:
 
     @property
     def transfer_bytes(self) -> int:
-        return sum(i.size for i in self.items if i.action in (COPY, UPDATE))
+        """Bytes that will actually cross the network."""
+        return sum(
+            i.size for i in self.items if i.action in (COPY, UPDATE) and i.transfers_data
+        )
+
+    @property
+    def inplace_count(self) -> int:
+        """Files already identical at the destination, needing only a re-stamp."""
+        return sum(1 for i in self.items if i.action == UPDATE and not i.transfers_data)
+
+    @property
+    def inplace_bytes(self) -> int:
+        """Size of those files - what they weigh, NOT what gets sent.
+
+        Reported separately for exactly that reason: summing it into
+        transfer_bytes is what made a permissions sweep of a media library look
+        like a full re-copy of it.
+        """
+        return sum(i.size for i in self.items if i.action == UPDATE and not i.transfers_data)
 
 
 def parse_filters(raw: str | None) -> list[str]:

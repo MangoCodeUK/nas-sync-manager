@@ -98,6 +98,31 @@ def test_a_path_outside_the_devices_filesystem_root_is_refused():
         )
 
 
+def test_an_ftp_path_is_refused_with_the_filesystem_path_that_was_meant():
+    # The mistake this catches: Browse over FTP shows /public/TV Shows, that path
+    # is carried into a job whose transport is then switched to rsync, and rsync
+    # cannot address it. Saying only "wrong" leaves someone guessing at a prefix
+    # they have never had to type.
+    with pytest.raises(RsyncError, match=r"/mnt/md0/public/TV Shows"):
+        rsync_client.build_endpoint(
+            connection(), "/public/TV Shows", write=False, available=[]
+        )
+
+
+def test_an_ftp_path_is_named_even_when_rsync_is_not_configured():
+    # Otherwise the message advises bind-mounting '/public/TV Shows', a path the
+    # device does not have - a redeploy that could not have fixed anything.
+    with pytest.raises(RsyncError, match=r"/mnt/md0/public/TV Shows"):
+        rsync_client.build_endpoint(
+            connection(rsync_enabled=False), "/public/TV Shows", write=False, available=[]
+        )
+
+
+def test_a_device_with_no_filesystem_root_gets_no_invented_suggestion():
+    assert rsync_client.fs_equivalent(connection(fs_root=None), "/public/Films") is None
+    assert rsync_client.fs_equivalent(connection(), "/mnt/md0/public/Films") is None
+
+
 def test_the_filesystem_root_itself_cannot_be_addressed():
     # A daemon exposes named modules, never the whole device.
     with pytest.raises(RsyncError, match="cannot address"):
@@ -320,6 +345,42 @@ def test_transfer_bytes_counts_only_what_moves():
 def test_update_reason_names_the_attributes_that_differ():
     update = next(i for i in _plan().items if i.action == "update")
     assert "size" in update.reason and "time" in update.reason
+
+
+# A media library previously copied over FTP and now re-run over rsync: the data
+# already matches, so rsync re-stamps the mode of every file and sends none of
+# it. The two rows below are the only two outcomes that matter - one file whose
+# timestamp differs (sent in full) and one that only needs its mode fixed - and
+# telling them apart is the difference between a 1 GB transfer and a 101 GB one.
+PERMISSIONS_SWEEP = """.f....p...|100000000000|Red Dwarf/S01E01.mkv
+>f..t.....|1000000000|Red Dwarf/S01E02.mkv
+"""
+
+
+def _sweep():
+    return rsync_client.parse_itemized(
+        PERMISSIONS_SWEEP, source_root="/mnt/md0/public/TV", dest_root="/Volume1/public/TV"
+    )
+
+
+def test_a_file_only_being_re_stamped_is_not_counted_as_bytes_to_transfer():
+    plan = _sweep()
+    assert plan.transfer_bytes == 1_000_000_000
+    assert plan.inplace_bytes == 100_000_000_000
+    assert plan.inplace_count == 1
+
+
+def test_re_stamped_files_are_still_updates_so_the_move_gate_is_unchanged():
+    # _queue_source_deletions treats any remaining copy/update as "not in sync"
+    # and refuses to delete from the source. A file rsync could not finish
+    # re-stamping must keep blocking that, so it stays an update.
+    assert _sweep().update_count == 2
+
+
+def test_a_re_stamped_row_says_on_its_face_that_nothing_is_sent():
+    item = next(i for i in _sweep().items if i.size == 100_000_000_000)
+    assert item.transfers_data is False
+    assert "no data sent" in item.reason
 
 
 def test_unchanged_count_is_derived_from_stats_not_invented():

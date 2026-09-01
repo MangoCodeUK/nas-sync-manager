@@ -157,6 +157,10 @@ def build_endpoint(conn, path: str, *, write: bool, available=None) -> Endpoint:
         return Endpoint(spec=mounts.resolve(path, write=write, mounts=available), is_local=True)
 
     if not conn.rsync_enabled:
+        if fs_root and fs_equivalent(conn, path):
+            # Telling someone to bind-mount a path the device does not have would
+            # send them off editing compose for a share that was never the problem.
+            raise RsyncError(_outside_root(conn, path, normalise(fs_root)))
         raise RsyncError(
             f"'{path}' on {conn.name} is not reachable for rsync: it is not bind-mounted "
             f"into the container, and rsync is not configured for this connection. Either "
@@ -198,10 +202,7 @@ def _module_for(path: str, conn) -> tuple[str, str]:
     fs_root = normalise(conn.fs_root or "/")
     target = normalise(path)
     if not (target == fs_root or target.startswith(fs_root.rstrip("/") + "/")):
-        raise RsyncError(
-            f"'{path}' is not under {conn.name}'s filesystem root ({fs_root}). Check the "
-            f"path, or the Filesystem root set on that connection."
-        )
+        raise RsyncError(_outside_root(conn, path, fs_root))
 
     relative = target[len(fs_root.rstrip("/")) :].lstrip("/")
     if not relative:
@@ -213,6 +214,46 @@ def _module_for(path: str, conn) -> tuple[str, str]:
 
     module, _, subpath = relative.partition("/")
     return module, subpath
+
+
+def _outside_root(conn, path: str, fs_root: str) -> str:
+    """Why an rsync path was refused, and - where there is one - what to use."""
+    equivalent = fs_equivalent(conn, path)
+    if equivalent:
+        return (
+            f"'{path}' is not under {conn.name}'s filesystem root ({fs_root}). rsync "
+            f"addresses folders by their real filesystem path, not the FTP one: if you "
+            f"meant the FTP path, this folder is '{equivalent}'. Otherwise check the "
+            f"Filesystem root set on that connection."
+        )
+    return (
+        f"'{path}' is not under {conn.name}'s filesystem root ({fs_root}). Check the "
+        f"path, or the Filesystem root set on that connection."
+    )
+
+
+def fs_equivalent(conn, path: str) -> str | None:
+    """The filesystem path that an FTP path names the same folder as.
+
+    One device has two names for every folder: the FTP server's
+    (``/public/TV Shows``) and the real filesystem's
+    (``/mnt/md0/public/TV Shows``). The FTP server is rooted at the device's
+    filesystem root, so they differ by exactly that prefix. Browse hands out
+    whichever name the transport it browsed over uses, which makes carrying a
+    path across transports the commonest way to end up with one rsync cannot
+    address - and "that path is wrong" is far less use than naming the path that
+    was meant.
+
+    Returns None when there is no second name to offer: the connection has no
+    filesystem root set, or the path is already under it. Nothing acts on the
+    result - these paths decide what gets copied and deleted, so the correction
+    stays the user's to make.
+    """
+    fs_root = normalise(conn.fs_root or "/")
+    target = normalise(path)
+    if fs_root == "/" or mounts._within(target, fs_root):
+        return None
+    return normalise(fs_root.rstrip("/") + target)
 
 
 def normalise(path: str) -> str:
@@ -565,6 +606,13 @@ def parse_itemized(stdout: str, *, source_root: str, dest_root: str) -> Plan:
     c created, * a message such as deleting), X the entry type (f file, d dir,
     L symlink). A brand-new file shows every attribute as '+'; an updated one
     shows which attributes differ, e.g. '>f.st......'.
+
+    Y is also the only thing separating "this file is being sent" from "this
+    file already matches and is having its mode re-stamped": a '.' there means
+    no data moves. Both are updates and both are worth previewing, but only one
+    of them costs time and bandwidth, so they are counted apart. Reading them
+    together is what let a permissions-only sweep of a media library preview as
+    a full re-copy of it.
     """
     plan = Plan()
     for raw in stdout.splitlines():
@@ -606,7 +654,16 @@ def parse_itemized(stdout: str, *, source_root: str, dest_root: str) -> Plan:
         if flags.endswith("+++++++++"):
             plan.items.append(PlanItem(COPY, source_path, dest_path, size, "new file"))
         else:
-            plan.items.append(PlanItem(UPDATE, source_path, dest_path, size, _why(flags)))
+            plan.items.append(
+                PlanItem(
+                    UPDATE,
+                    source_path,
+                    dest_path,
+                    size,
+                    _why(flags),
+                    transfers_data=flags[0] != ".",
+                )
+            )
     return plan
 
 
@@ -622,7 +679,10 @@ def _why(flags: str) -> str:
         reasons.append("time")
     if "p" in attributes:
         reasons.append("permissions")
-    return "changed: " + ", ".join(reasons) if reasons else "changed"
+    why = "changed: " + ", ".join(reasons) if reasons else "changed"
+    # Said on the row itself, not left to be inferred from the totals: this is
+    # the difference between a row that costs an hour and one that costs nothing.
+    return why if flags[0] != "." else f"{why} - fixed in place, no data sent"
 
 
 def parse_progress(line: str) -> tuple[int, int] | None:
@@ -670,6 +730,7 @@ __all__ = [
     "build_argv",
     "build_endpoint",
     "count_files",
+    "fs_equivalent",
     "list_files",
     "normalise",
     "parse_itemized",

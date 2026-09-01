@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, type Connection, type Transport } from "../api";
-import { FolderPane, rootFor, type PaneSelection } from "../components/FolderPane";
+import { FolderPane, type PaneSelection } from "../components/FolderPane";
+import { rootFor } from "../paths";
 
 export function BrowsePage() {
   const [connections, setConnections] = useState<Connection[]>([]);

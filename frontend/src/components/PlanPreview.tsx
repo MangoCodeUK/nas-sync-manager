@@ -20,7 +20,19 @@ export function PlanPreview({ plan, title }: { plan: Plan; title?: string }) {
         <span className="chip chip-mkdir">{plan.mkdir_count} folders</span>
         {plan.delete_count > 0 && <span className="chip chip-delete">{plan.delete_count} delete</span>}
         <span className="chip">{formatBytes(plan.transfer_bytes)} to transfer</span>
+        {plan.inplace_count > 0 && (
+          <span className="chip">
+            {plan.inplace_count} fixed in place ({formatBytes(plan.inplace_bytes)})
+          </span>
+        )}
       </div>
+      {plan.inplace_count > 0 && (
+        <p className="muted small">
+          "Fixed in place" files already match at the destination byte for byte - rsync only
+          re-stamps their permissions or timestamps, so their {formatBytes(plan.inplace_bytes)}{" "}
+          does not cross the network and costs almost no time.
+        </p>
+      )}
 
       {plan.warnings.length > 0 && (
         <ul className="plan-warnings">

@@ -346,6 +346,10 @@ export interface Plan {
   delete_count: number;
   archive_count: number;
   transfer_bytes: number;
+  /** Files already identical at the destination, needing only a re-stamp. */
+  inplace_count: number;
+  /** What those files weigh - none of it crosses the network. */
+  inplace_bytes: number;
   truncated: boolean;
   /** Exact command a run would issue, credentials removed. null for FTP. */
   command: string | null;

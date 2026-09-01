@@ -62,6 +62,8 @@ def _plan_to_read(plan: Plan) -> PlanRead:
         delete_count=plan.delete_count,
         archive_count=plan.archive_count,
         transfer_bytes=plan.transfer_bytes,
+        inplace_count=plan.inplace_count,
+        inplace_bytes=plan.inplace_bytes,
         truncated=len(plan.items) > _MAX_PLAN_ITEMS,
         command=plan.command,
     )
