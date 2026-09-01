@@ -31,7 +31,10 @@ function Ensure-NasConfig {
         $p = Read-Host "NAS SSH port (TerraMaster is often 9222) [9222]"
         $cfg.NAS_PORT = if ([string]::IsNullOrWhiteSpace($p)) { "9222" } else { $p }
     }
-    if (-not $cfg.NAS_DIR)  { $cfg.NAS_DIR = Read-Host "App folder on the NAS (e.g. /Volume1/AI Applications/NAS Sync)" }
+    # NOT under /Volume1 - the app folder is in the SSH user's home. Guessing a
+    # /Volume1 path is what failed the 2026-09-01 deploy: ssh, port and auth were
+    # all fine and only the cd failed, which reads like a connection problem.
+    if (-not $cfg.NAS_DIR)  { $cfg.NAS_DIR = Read-Host "App folder on the NAS (e.g. /home/MangoUK/AI Applications/NAS Sync)" }
     Save-NasEnv $cfg
     return $cfg
 }
@@ -123,7 +126,13 @@ function Update-Nas {
     # Send the share list first (it is the file people edit), then the stack.
     Get-Content -Raw (Join-Path $RepoRoot $SharesFile) |
         ssh -p $port $target ("cd '" + $dir + "' && cat > docker-compose.shares.yml")
-    if ($LASTEXITCODE -ne 0) { throw 'Could not copy the share list to the NAS.' }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "A 'cd: ... No such file or directory' above means SSH, the port and auth" -ForegroundColor Yellow
+        Write-Host 'are all fine and only NAS_DIR is wrong. The app folder is NOT under /Volume1.' -ForegroundColor Yellow
+        Write-Host 'Ask the NAS where the stack really lives, then fix NAS_DIR in deploy/nas.env:' -ForegroundColor Yellow
+        Write-Host '  docker inspect nas-sync-backend --format "{{index .Config.Labels \"com.docker.compose.project.working_dir\"}}"' -ForegroundColor Yellow
+        throw 'Could not copy the share list to the NAS.'
+    }
     Get-Content -Raw $composePath | ssh -p $port $target $cmd
     if ($LASTEXITCODE -ne 0) { throw "NAS update failed." }
     Write-Host "Deployed. Open http://$($cfg.NAS_HOST):<WEB_PORT> and hard-refresh (Ctrl+Shift+R)." -ForegroundColor Green
