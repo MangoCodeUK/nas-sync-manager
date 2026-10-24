@@ -1,0 +1,51 @@
+/* ProjectMangoTech brand shell: the shared colour tokens for both themes, the brand fonts, and the slim bar that
+   every app shows at the top. Apps map their own variables onto the --pmt-* tokens so one switch themes everything.
+   Dark is the default; <html data-theme="light"> flips the tokens (set by pmt-shell.js before first paint). */
+@font-face{font-family:Rajdhani;src:url('fonts/Rajdhani-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+@font-face{font-family:Barlow;src:url('fonts/Barlow-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face{font-family:Barlow;src:url('fonts/Barlow-SemiBold.ttf') format('truetype');font-weight:600;font-display:swap}
+
+:root{
+  --pmt-font-display:Rajdhani,'Arial Narrow',Arial,sans-serif;
+  --pmt-font-body:Barlow,'Segoe UI',Arial,sans-serif;
+  --pmt-font-mono:ui-monospace,'Cascadia Mono',Consolas,monospace;
+  --pmt-molten:#ff8a00;--pmt-red:#ff3b1f;--pmt-ember:#b82e24;
+  --pmt-bar-height:42px;
+  /* Dark: obsidian and steel */
+  --pmt-bg:#101216;--pmt-bg-2:#15181d;--pmt-panel:#191d23;--pmt-panel-2:#23272e;--pmt-ink:#0b0d10;
+  --pmt-line:#373f49;--pmt-line-2:#4f5965;
+  --pmt-text:#ededed;--pmt-text-strong:#eef2f5;--pmt-text-soft:#b8c2cc;--pmt-muted:#8a94a0;
+  --pmt-accent:#ff8a00;--pmt-accent-text:#ff8a00;--pmt-accent-soft:rgba(255,138,0,.14);--pmt-accent-contrast:#101216;
+  --pmt-ok:#5fc08b;--pmt-warn:#ffb866;--pmt-bad:#ff6b57;--pmt-info:#8fb8ff;
+  --pmt-shadow:0 18px 40px rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  /* Light: silver and steel, the same accents */
+  --pmt-bg:#f3f5f7;--pmt-bg-2:#e9edf1;--pmt-panel:#ffffff;--pmt-panel-2:#f7f9fb;--pmt-ink:#ffffff;
+  --pmt-line:#d3d9e0;--pmt-line-2:#b8c2cc;
+  --pmt-text:#1b1f24;--pmt-text-strong:#101216;--pmt-text-soft:#3f4a56;--pmt-muted:#5b6673;
+  --pmt-accent:#ff8a00;--pmt-accent-text:#b84a00;--pmt-accent-soft:rgba(255,138,0,.16);--pmt-accent-contrast:#101216;
+  --pmt-ok:#1f7a4a;--pmt-warn:#9a5a00;--pmt-bad:#c0392b;--pmt-info:#1f5fbf;
+  --pmt-shadow:0 18px 40px rgba(16,18,22,.14);
+  color-scheme:light;
+}
+
+/* The bar */
+.pmt-bar{position:relative;z-index:60;background:var(--pmt-ink);border-bottom:1px solid var(--pmt-line);font:14px/1 var(--pmt-font-body);color:var(--pmt-text-soft);-webkit-font-smoothing:antialiased}
+.pmt-bar-inner{display:flex;align-items:center;gap:12px;min-height:var(--pmt-bar-height);padding:0 16px}
+.pmt-bar a{color:inherit;text-decoration:none}
+.pmt-bar-brand{display:inline-flex;align-items:center;gap:8px;font-family:var(--pmt-font-display);font-weight:700;font-size:17px;letter-spacing:.01em;color:var(--pmt-text-strong);white-space:nowrap}
+.pmt-bar-brand em{font-style:normal;color:var(--pmt-molten)}
+.pmt-bar-mark{display:block;width:22px;height:20px}
+.pmt-bar-sep{width:1px;height:18px;background:var(--pmt-line-2)}
+.pmt-bar-app{font-weight:600;color:var(--pmt-text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pmt-bar-spacer{flex:1}
+.pmt-bar-home{font-weight:600;white-space:nowrap;padding:6px 8px;border-radius:4px}
+.pmt-bar-home:hover{color:var(--pmt-molten)}
+.pmt-theme-toggle{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 10px;border:1px solid var(--pmt-line-2);border-radius:999px;background:transparent;color:var(--pmt-text-strong);font:600 13px/1 var(--pmt-font-body);cursor:pointer;transition:border-color .2s,color .2s,background-color .2s}
+.pmt-theme-toggle:hover{border-color:var(--pmt-molten);color:var(--pmt-molten)}
+.pmt-theme-toggle:focus-visible{outline:3px solid var(--pmt-molten);outline-offset:2px}
+.pmt-theme-toggle svg{flex:none}
+@media (max-width:560px){.pmt-bar-app,.pmt-theme-label{display:none}.pmt-bar-sep{display:none}.pmt-bar-inner{padding:0 10px;gap:8px}}
+@media print{.pmt-bar{display:none}}

@@ -1,14 +1,26 @@
+/* The app's own names map onto the ProjectMangoTech shell tokens (pmt/pmt-shell.css), so the shared
+   light/dark switch themes this app with the rest of the site. */
 :root {
-  --bg: #0f1419;
-  --panel: #171d26;
-  --panel-2: #1f2733;
-  --border: #2a3340;
-  --text: #e6edf3;
-  --muted: #8b97a7;
-  --accent: #4f9cf9;
-  --ok: #3fb950;
-  --bad: #f85149;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bg: var(--pmt-bg);
+  --panel: var(--pmt-panel);
+  --panel-2: var(--pmt-panel-2);
+  --border: var(--pmt-line);
+  --text: var(--pmt-text);
+  --muted: var(--pmt-muted);
+  --accent: var(--pmt-accent-text);
+  --accent-soft: var(--pmt-accent-soft);
+  --ok: var(--pmt-ok);
+  --bad: var(--pmt-bad);
+  --warn: var(--pmt-warn);
+  --well: var(--pmt-ink);
+  font-family: var(--pmt-font-body);
+}
+h1, h2, h3, .brand-name {
+  font-family: var(--pmt-font-display);
+  letter-spacing: .01em;
+}
+.layout {
+  min-height: calc(100vh - var(--pmt-bar-height));
 }
 
 * {
@@ -217,7 +229,7 @@ select:focus {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #04122a;
+  color: var(--well);
   font-weight: 600;
 }
 
@@ -544,7 +556,7 @@ td {
   margin: 8px 0 12px;
   padding-left: 4px;
   list-style: none;
-  color: #f0b429;
+  color: var(--warn);
   font-size: 13px;
 }
 
@@ -558,8 +570,8 @@ td {
 }
 
 .chip-warn {
-  color: #f0b429;
-  border-color: #f0b429;
+  color: var(--warn);
+  border-color: var(--warn);
 }
 
 .progress {
