@@ -1,12 +1,19 @@
 // ProjectMangoTech brand shell: one theme preference shared by the site and every app on *.projectmangotech.com,
-// and a slim bar at the top of each app with the way back to the main site and the light/dark switch.
+// a slim bar at the top of each app with the way back to the main site and the light/dark switch, and the account menu
+// (who is signed in, their applications and settings, sign out) in that bar and in the site's own header.
 //
 //   <script src="pmt/pmt-shell.js" data-app="NAS Sync Manager"></script>
 //
 // Attributes on the script tag: data-app (the app's name in the bar), data-home (the link back, default
 // https://projectmangotech.com/), data-home-label, data-default ("dark" or "light" when nothing is stored and the
 // browser has no preference), data-no-bar (apply the theme only; the page draws its own bar), data-mark (path to the
-// logo mark, default pmt-mark.svg next to this script).
+// logo mark, default pmt-mark.svg next to this script), data-account (the site's account pages: by default
+// https://projectmangotech.com/account/ on the site's own hosts and /account/ on this host anywhere else, such as
+// staging; "off" leaves the account menu out).
+//
+// The account menu fills every element with class pmt-account (the bar has one). It asks the account service who is
+// signed in (GET <account>api/me, with credentials), so a host other than the site needs that address in its
+// Content-Security-Policy connect-src; without it the menu simply does not appear.
 //
 // The theme is written to <html data-theme="dark|light"> before the page renders (load this script in <head>,
 // not deferred), kept in a cookie on the parent domain so subdomains share it, and mirrored in localStorage for
@@ -78,6 +85,79 @@
     if (b) { e.preventDefault(); toggle(); }
   });
 
+  // ---- the account menu ----
+  var ACCOUNT = data.account === 'off' ? '' : (data.account || (domain ? 'https://projectmangotech.com/account/' : '/account/')).replace(/\/?$/, '/');
+  var CARET = '<svg class="pmt-account-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  var menus = 0;
+  function accountStyles() {
+    if (document.querySelector('link[data-pmt-account]')) return;
+    var l = document.createElement('link');
+    l.rel = 'stylesheet'; l.href = base + 'pmt-account.css'; l.setAttribute('data-pmt-account', '');
+    document.head.appendChild(l);
+  }
+  function accountMenu(me) {
+    var here = encodeURIComponent(location.href);
+    if (!me.signedIn) return '<a class="pmt-account-signin" href="' + esc(me.login + '?next=' + here) + '">Sign in</a>';
+    var id = 'pmt-account-menu-' + (++menus);
+    var items = me.demo
+      ? '<p class="pmt-account-note">You are using the shared demo login. Create an account of your own to use the live applications.</p>'
+        + '<a href="' + esc(me.register + '?next=' + here) + '">Create your account</a>'
+      : '<a href="' + esc(me.account + '#apps') + '">My applications</a>'
+        + '<a href="' + esc(me.account + '#profile') + '">Account settings</a>'
+        + '<a href="' + esc(me.account + '#security') + '">Password and sign-in</a>';
+    return '<button type="button" class="pmt-account-button" aria-expanded="false" aria-controls="' + id + '" aria-label="Account: ' + esc(me.name) + '">'
+      + '<span class="pmt-account-initials" aria-hidden="true">' + esc(me.initials) + '</span>'
+      + '<span class="pmt-account-name" aria-hidden="true">' + esc(me.demo ? 'Demo' : me.name.split(/\s+/)[0]) + '</span>' + CARET + '</button>'
+      + '<div class="pmt-account-menu" id="' + id + '" hidden>'
+      + '<div class="pmt-account-who"><strong>' + esc(me.name) + '</strong>' + (me.email ? '<span>' + esc(me.email) + '</span>' : '') + '</div>'
+      + items
+      + '<button type="button" class="pmt-account-signout">Sign out</button></div>';
+  }
+  function accountMenus() {
+    var slots = document.querySelectorAll('.pmt-account');
+    if (!ACCOUNT || !slots.length || !window.fetch) return;
+    accountStyles();
+    fetch(ACCOUNT + 'api/me', {credentials: 'include', cache: 'no-store'})
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (me) {
+        if (!me || typeof me.signedIn !== 'boolean') return;
+        for (var i = 0; i < slots.length; i++) { slots[i].innerHTML = accountMenu(me); slots[i].classList.add('pmt-account-ready'); }
+      })
+      .catch(function () {});
+  }
+  function setMenu(button, open) {
+    var menu = document.getElementById(button.getAttribute('aria-controls'));
+    if (!menu) return;
+    menu.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+  }
+  function closeMenus(except) {
+    var open = document.querySelectorAll('.pmt-account-button[aria-expanded="true"]');
+    for (var i = 0; i < open.length; i++) if (open[i] !== except) setMenu(open[i], false);
+  }
+  // Signing out posts to the account service (from another host of the site too) and reloads: a public page then shows
+  // "Sign in", and an application's gate asks for a sign-in again.
+  function signOut(button) {
+    button.disabled = true;
+    fetch(ACCOUNT + 'logout', {method: 'POST', credentials: 'include', redirect: 'manual', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: ''})
+      .catch(function () {})
+      .then(function () { location.reload(); });
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    var button = t.closest('.pmt-account-button');
+    if (!t.closest('.pmt-account')) closeMenus(null);
+    if (button) { e.preventDefault(); closeMenus(button); setMenu(button, button.getAttribute('aria-expanded') !== 'true'); return; }
+    var out = t.closest('.pmt-account-signout');
+    if (out) { e.preventDefault(); signOut(out); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var open = document.querySelector('.pmt-account-button[aria-expanded="true"]');
+    if (open) { setMenu(open, false); open.focus(); }
+  });
+
   // ---- the bar ----
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
   function bar() {
@@ -94,6 +174,7 @@
       + (data.app ? '<span class="pmt-bar-sep" aria-hidden="true"></span><span class="pmt-bar-app">' + esc(data.app) + '</span>' : '')
       + '<span class="pmt-bar-spacer"></span>'
       + '<a class="pmt-bar-home" href="' + esc(home) + '"><span aria-hidden="true">&larr;</span> ' + esc(label) + '</a>'
+      + (ACCOUNT ? '<span class="pmt-account"></span>' : '')
       + '<button type="button" class="pmt-theme-toggle"></button>'
       + '</div>';
     document.body.insertBefore(el, document.body.firstChild);
@@ -106,4 +187,5 @@
   window.addEventListener('storage', function (e) { if (e.key === KEY && valid(e.newValue) && e.newValue !== current()) apply(e.newValue, false); });
   if (document.body) bar(); else document.addEventListener('DOMContentLoaded', bar);
   document.addEventListener('DOMContentLoaded', function () { paintToggles(current()); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', accountMenus); else accountMenus();
 })();

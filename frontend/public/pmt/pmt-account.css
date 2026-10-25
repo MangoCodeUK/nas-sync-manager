@@ -1,0 +1,22 @@
+/* The account menu (pmt-shell.js): "Sign in", or the signed-in person's initials opening their applications, settings
+   and sign-out. Loaded by the shell only where a menu is shown. Uses the shell's --pmt-* tokens, falling back to the
+   site's own variables in the site header, which does not load pmt-shell.css. */
+.pmt-account{position:relative;display:inline-flex;align-items:center;min-height:28px;font:600 14px/1 var(--pmt-font-body,var(--font-body,Barlow,sans-serif))}
+.pmt-account-signin{display:inline-flex;align-items:center;min-height:28px;padding:4px 12px;border:1px solid var(--pmt-line-2,var(--gunmetal));border-radius:999px;color:var(--pmt-text-strong,var(--silver))!important;text-decoration:none;white-space:nowrap}
+.pmt-account-signin:hover{border-color:var(--pmt-molten,var(--molten));color:var(--pmt-molten,var(--molten))!important}
+.pmt-account-button{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:2px 10px 2px 2px;border:1px solid var(--pmt-line-2,var(--gunmetal));border-radius:999px;background:transparent;color:var(--pmt-text-strong,var(--silver));font:inherit;cursor:pointer}
+.pmt-account-button:hover,.pmt-account-button[aria-expanded="true"]{border-color:var(--pmt-molten,var(--molten))}
+.pmt-account-button:focus-visible,.pmt-account-signin:focus-visible,.pmt-account-menu a:focus-visible,.pmt-account-signout:focus-visible{outline:3px solid var(--pmt-molten,var(--molten));outline-offset:2px}
+.pmt-account-initials{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--pmt-molten,var(--molten));color:#101216;font:700 12px/1 var(--pmt-font-display,var(--font-display,Rajdhani,sans-serif));letter-spacing:.04em}
+.pmt-account-name{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmt-account-caret{flex:none;opacity:.8}
+.pmt-account-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:80;width:260px;max-width:calc(100vw - 24px);padding:6px;background:var(--pmt-panel,var(--panel));border:1px solid var(--pmt-line,var(--line));border-radius:6px;box-shadow:var(--pmt-shadow,0 18px 40px rgba(0,0,0,.4));text-align:left}
+.pmt-account-menu[hidden]{display:none}
+.pmt-account-who{display:grid;gap:4px;padding:10px 10px 12px;margin-bottom:4px;border-bottom:1px solid var(--pmt-line,var(--line))}
+.pmt-account-who strong{color:var(--pmt-text-strong,var(--silver));font-size:15px}
+.pmt-account-who span{color:var(--pmt-muted,var(--muted));font-weight:400;font-size:13px;overflow-wrap:anywhere}
+.pmt-account-menu a,.pmt-account-signout{display:block;width:100%;box-sizing:border-box;padding:10px;border:0;border-radius:4px;background:transparent;color:var(--pmt-text-strong,var(--silver))!important;font:inherit;text-align:left;text-decoration:none;cursor:pointer;box-shadow:none!important}
+.pmt-account-menu a:hover,.pmt-account-signout:hover{background:var(--pmt-accent-soft,var(--hot-soft));color:var(--pmt-text-strong,var(--silver))!important}
+.pmt-account-signout{margin-top:4px;border-top:1px solid var(--pmt-line,var(--line));border-radius:0 0 4px 4px;color:var(--pmt-text-soft,var(--steel))!important}
+.pmt-account-note{margin:4px 10px 8px;color:var(--pmt-text-soft,var(--steel));font-weight:400;font-size:13px;line-height:1.45}
+@media (max-width:560px){.pmt-account-name{display:none}.pmt-account-button{padding-right:8px}}
