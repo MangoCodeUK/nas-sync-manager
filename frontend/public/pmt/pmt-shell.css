@@ -43,6 +43,9 @@
 .pmt-bar-spacer{flex:1}
 .pmt-bar-home{font-weight:600;white-space:nowrap;padding:6px 8px;border-radius:4px}
 .pmt-bar-home:hover{color:var(--pmt-molten)}
+.pmt-bar-help{font-weight:600;white-space:nowrap;padding:6px 8px;border-radius:4px}
+.pmt-bar-help:hover{color:var(--pmt-molten)}
+.pmt-bar-help[hidden]{display:none}
 .pmt-theme-toggle{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 10px;border:1px solid var(--pmt-line-2);border-radius:999px;background:transparent;color:var(--pmt-text-strong);font:600 13px/1 var(--pmt-font-body);cursor:pointer;transition:border-color .2s,color .2s,background-color .2s}
 .pmt-theme-toggle:hover{border-color:var(--pmt-molten);color:var(--pmt-molten)}
 .pmt-theme-toggle:focus-visible{outline:3px solid var(--pmt-molten);outline-offset:2px}

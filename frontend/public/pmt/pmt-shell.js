@@ -13,7 +13,8 @@
 //
 // The account menu fills every element with class pmt-account (the bar has one). It asks the account service who is
 // signed in (GET <account>api/me, with credentials), so a host other than the site needs that address in its
-// Content-Security-Policy connect-src; without it the menu simply does not appear.
+// Content-Security-Policy connect-src; without it the menu simply does not appear. The same answer says whether this
+// application has a page in the help centre, and the bar then shows a Help link to it.
 //
 // The theme is written to <html data-theme="dark|light"> before the page renders (load this script in <head>,
 // not deferred), kept in a cookie on the parent domain so subdomains share it, and mirrored in localStorage for
@@ -117,11 +118,13 @@
     var slots = document.querySelectorAll('.pmt-account');
     if (!ACCOUNT || !slots.length || !window.fetch) return;
     accountStyles();
-    fetch(ACCOUNT + 'api/me', {credentials: 'include', cache: 'no-store'})
+    fetch(ACCOUNT + 'api/me?here=' + encodeURIComponent(location.href), {credentials: 'include', cache: 'no-store'})
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (me) {
         if (!me || typeof me.signedIn !== 'boolean') return;
         for (var i = 0; i < slots.length; i++) { slots[i].innerHTML = accountMenu(me); slots[i].classList.add('pmt-account-ready'); }
+        var help = document.querySelector('.pmt-bar-help');
+        if (help && typeof me.help === 'string' && /^https?:\/\//.test(me.help)) { help.href = me.help; help.hidden = false; }
       })
       .catch(function () {});
   }
@@ -173,6 +176,7 @@
       + '<span class="pmt-bar-name">Project<em>Mango</em>Tech</span></a>'
       + (data.app ? '<span class="pmt-bar-sep" aria-hidden="true"></span><span class="pmt-bar-app">' + esc(data.app) + '</span>' : '')
       + '<span class="pmt-bar-spacer"></span>'
+      + '<a class="pmt-bar-help" hidden>Help</a>'
       + '<a class="pmt-bar-home" href="' + esc(home) + '"><span aria-hidden="true">&larr;</span> ' + esc(label) + '</a>'
       + (ACCOUNT ? '<span class="pmt-account"></span>' : '')
       + '<button type="button" class="pmt-theme-toggle"></button>'
