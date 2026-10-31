@@ -25,7 +25,7 @@ services:
       # by deploy/setup.sh, deploy/update.sh and deploy/manage.ps1.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
-      interval: 30s
+      interval: 60s
       timeout: 5s
       retries: 3
       start_period: 20s
@@ -46,6 +46,8 @@ services:
   # Restarts any container labelled autoheal=true when its healthcheck fails.
   autoheal:
     image: willfarrell/autoheal:latest
+    healthcheck:
+      interval: 60s   # the image checks itself every 5 seconds
     container_name: nas-sync-autoheal
     environment:
       AUTOHEAL_CONTAINER_LABEL: autoheal
