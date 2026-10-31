@@ -31,6 +31,15 @@ services:
       # individual folders any time by replacing this line.
       - /Volume1/public:/nas/Volume1/public
 
+      # --- ProjectMangoTech's nightly backups, copied to NAS-8TB (appdata/pmt-backups) by one job each ---
+      # Read-only: these are only ever copied FROM. The live Core applets' and the till's database dumps, QR Code
+      # Manager's, the site service's and Flow's database copies (website deploy/*, Core ADR-047).
+      - /Volume1/appData/core-live/backups:/nas/Volume1/appData/core-live/backups:ro
+      - /Volume1/appData/lock-box-register/backups:/nas/Volume1/appData/lock-box-register/backups:ro
+      - /Volume1/appData/qr-code-manager/backups:/nas/Volume1/appData/qr-code-manager/backups:ro
+      - /Volume1/appData/projectmangotech-editor-data/backups:/nas/Volume1/appData/projectmangotech-editor-data/backups:ro
+      - /Volume1/appData/coreflow-workspaces-data/backups:/nas/Volume1/appData/coreflow-workspaces-data/backups:ro
+
       # Examples of narrowing, if you would rather:
       # - /Volume1/public/Media Library:/nas/Volume1/public/Media Library
       # - /Volume1/public/Software and Assets:/nas/Volume1/public/Software and Assets:ro
