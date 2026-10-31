@@ -6,9 +6,17 @@
 # "-f docker-compose.prod.yml" yourself OVERRIDES that and silently drops every
 # share bind mount: the stack still comes up healthy, and the first rsync job
 # then fails with "not bind-mounted into the container".
+# Each container's log is kept to three files of 10 MB (Docker keeps everything otherwise).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     image: ghcr.io/${IMAGE_OWNER:-changeme}/nas-sync-manager-backend:${IMAGE_TAG:-latest}
+    logging: *logging
     container_name: nas-sync-backend
     environment:
       DATABASE_URL: sqlite:////data/nas_sync.db
@@ -35,6 +43,7 @@ services:
 
   frontend:
     image: ghcr.io/${IMAGE_OWNER:-changeme}/nas-sync-manager-frontend:${IMAGE_TAG:-latest}
+    logging: *logging
     container_name: nas-sync-frontend
     ports:
       - "${WEB_PORT:-8088}:80"
@@ -46,6 +55,7 @@ services:
   # Restarts any container labelled autoheal=true when its healthcheck fails.
   autoheal:
     image: willfarrell/autoheal:latest
+    logging: *logging
     healthcheck:
       interval: 60s   # the image checks itself every 5 seconds
     container_name: nas-sync-autoheal
