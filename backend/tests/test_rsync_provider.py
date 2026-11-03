@@ -555,3 +555,48 @@ def test_progress_output_is_split_on_carriage_returns():
     parts = [p for p in _re.split(r"[\r\n]", chunk) if p]
     assert len(parts) == 3
     assert rsync_client.parse_progress(parts[1]) == (2000, 20)
+
+
+# --- host and user reach ssh and rsync as arguments --------------------------
+OPTION_HOST = "-oProxyCommand=sh -c 'id>/tmp/p'"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        dict(rsync_host=OPTION_HOST),
+        dict(rsync_username="-oProxyCommand=id;#"),
+        dict(rsync_host="nas host"),
+        dict(rsync_username="admin@other"),
+        dict(rsync_host=None, host="-oProxyCommand=id"),
+    ],
+)
+@pytest.mark.parametrize("mode", ["ssh", "daemon"])
+def test_a_host_or_user_that_could_be_read_as_an_option_is_refused(overrides, mode):
+    conn = connection(rsync_mode=mode, **overrides)
+    with pytest.raises(RsyncError, match="rsync (host|user name)"):
+        rsync_client.build_endpoint(conn, "/mnt/md0/RsyncSourceTest", write=False, available=[])
+
+
+def test_the_rsync_test_refuses_an_option_host_without_running_anything(monkeypatch):
+    ran = []
+    monkeypatch.setattr(rsync_client, "run", lambda argv, **k: ran.append(argv))
+    result = rsync_client.test_connection(connection(rsync_mode="ssh", rsync_host=OPTION_HOST))
+    assert ran == []
+    assert not result.reachable and "rsync host" in result.messages[0]
+
+
+def test_the_ssh_probe_ends_options_before_the_destination(monkeypatch):
+    ran = []
+    monkeypatch.setattr(rsync_client, "run", lambda argv, **k: ran.append(argv) or SimpleNamespace(returncode=0, stdout="rsync  version 3.2.7", stderr=""))
+    rsync_client.test_connection(connection(rsync_mode="ssh", rsync_username="Admin"))
+    argv = ran[0]
+    assert argv[argv.index("--") + 1] == "Admin@192.168.50.189"
+
+
+@pytest.mark.parametrize("host", ["192.168.50.189", "nas-4.local", "NAS_1", "[fe80::1]"])
+def test_ordinary_hosts_are_accepted(host):
+    endpoint = rsync_client.build_endpoint(
+        connection(rsync_mode="ssh", rsync_host=host, rsync_username="Admin.backup"), "/mnt/md0/RsyncSourceTest", write=False, available=[]
+    )
+    assert endpoint.spec == f"Admin.backup@{host}:/mnt/md0/RsyncSourceTest"

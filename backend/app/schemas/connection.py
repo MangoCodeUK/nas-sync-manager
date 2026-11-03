@@ -6,9 +6,25 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.constants import Protocol, RsyncMode
+from app.constants import HOST_PATTERN, USER_PATTERN, Protocol, RsyncMode
+
+
+def _host(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return value
+    if not HOST_PATTERN.match(value.strip()):
+        raise ValueError("Enter a host name or IP address (an IPv6 address in [brackets]).")
+    return value.strip()
+
+
+def _user(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return value
+    if not USER_PATTERN.match(value.strip()):
+        raise ValueError("A user name may contain letters, digits, '.', '_' and '-', and cannot start with '-' or '.'.")
+    return value.strip()
 
 
 class ConnectionBase(BaseModel):
@@ -40,6 +56,11 @@ class ConnectionCreate(ConnectionBase):
     # Write-only, like `password`. Never returned by any endpoint.
     rsync_password: str | None = Field(default=None, min_length=1)
 
+    # Checked on the way in; rsync_client checks again before anything runs, for
+    # connections saved before this check existed.
+    _hosts = field_validator("host", "rsync_host")(_host)
+    _users = field_validator("rsync_username")(_user)
+
 
 class ConnectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -61,6 +82,11 @@ class ConnectionUpdate(BaseModel):
     rsync_username: str | None = None
     rsync_password: str | None = Field(default=None, min_length=1)  # only if changing
     rsync_ssh_port: int | None = Field(default=None, ge=1, le=65535)
+
+    # Checked on the way in; rsync_client checks again before anything runs, for
+    # connections saved before this check existed.
+    _hosts = field_validator("host", "rsync_host")(_host)
+    _users = field_validator("rsync_username")(_user)
 
 
 class ConnectionRead(ConnectionBase):

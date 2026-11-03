@@ -16,6 +16,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 
+from app.constants import HOST_PATTERN, USER_PATTERN
 from app.services import mounts
 from app.services.planner import COPY, DELETE, MKDIR, UPDATE, Plan, PlanItem, parse_filters
 
@@ -48,6 +49,22 @@ _SEPARATOR = "|"
 
 class RsyncError(Exception):
     """rsync could not be run, or the configuration for it is unusable."""
+
+
+def remote(conn) -> tuple[str, str]:
+    """The host and user a remote spec is built from, refused unless they are plain names.
+
+    The schemas check these on the way in; this is the check that counts, because a
+    connection saved before then still reaches ssh and rsync through here. A value
+    starting with "-" would be read as an option (-oProxyCommand=... runs a command).
+    """
+    host = (conn.rsync_host or conn.host or "").strip()
+    user = (conn.rsync_username or "").strip()
+    if not HOST_PATTERN.match(host):
+        raise RsyncError(f"{conn.name}'s rsync host is not a host name or IP address. Correct it in the connection's settings.")
+    if user and not USER_PATTERN.match(user):
+        raise RsyncError(f"{conn.name}'s rsync user name has characters rsync cannot use. Correct it in the connection's settings.")
+    return host, user
 
 
 class Cancelled(Exception):
@@ -168,8 +185,7 @@ def build_endpoint(conn, path: str, *, write: bool, available=None) -> Endpoint:
             f"{conn.name}."
         )
 
-    host = (conn.rsync_host or conn.host).strip()
-    user = (conn.rsync_username or "").strip()
+    host, user = remote(conn)
 
     if conn.rsync_mode == "ssh":
         # user@host:/absolute/path - the device's real filesystem path.
@@ -781,13 +797,16 @@ def test_connection(conn, password: str | None = None) -> RsyncTestResult:
     import socket
 
     result = RsyncTestResult()
-    host = (conn.rsync_host or conn.host).strip()
+    try:
+        host, user = remote(conn)
+    except RsyncError as exc:
+        result.messages.append(str(exc))
+        return result
 
     if conn.rsync_mode == "ssh":
         # Ask the far end for its rsync version over SSH: proves the transport,
         # the login and that rsync exists there, in one round trip.
         port = conn.rsync_ssh_port or 22
-        user = (conn.rsync_username or "").strip()
         target = f"{user}@{host}" if user else host
         probe = run(
             [
@@ -795,7 +814,7 @@ def test_connection(conn, password: str | None = None) -> RsyncTestResult:
                 "-o", "BatchMode=yes",
                 "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "ConnectTimeout=10",
-                target, "rsync --version",
+                "--", target, "rsync --version",
             ],
             timeout=30,
         )
@@ -832,7 +851,6 @@ def test_connection(conn, password: str | None = None) -> RsyncTestResult:
     if not result.reachable:
         return result
 
-    user = (conn.rsync_username or "").strip()
     target = f"{user}@{host}::" if user else f"{host}::"
     listing = run(["rsync", "--list-only", target], password=password, timeout=30)
     if listing.returncode != 0:

@@ -104,8 +104,10 @@ def _modules(conn, password: str | None) -> list[str]:
     of these devices do, so this quietly returns nothing rather than erroring
     when no password is stored yet.
     """
-    host = (conn.rsync_host or conn.host).strip()
-    user = (conn.rsync_username or "").strip()
+    try:
+        host, user = rsync_client.remote(conn)
+    except RsyncError:
+        return []
     target = f"{user}@{host}::" if user else f"{host}::"
     try:
         result = rsync_client.run(["rsync", "--list-only", target], password=password, timeout=30)

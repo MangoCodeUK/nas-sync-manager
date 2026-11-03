@@ -125,3 +125,14 @@ def test_no_rsync_block_when_the_connection_does_not_use_rsync(client, ftp_serve
         "name": "ftp-only",
     }
     assert client.post("/api/connections/test", json=payload).json()["rsync"] is None
+
+
+def test_a_host_or_rsync_user_that_could_be_read_as_an_option_is_refused(client):
+    base = {"name": "x", "host": "192.168.50.189", "port": 21, "username": "x", "password": "x",
+            "rsync_enabled": True, "rsync_mode": "ssh"}
+    for bad in ({"rsync_host": "-oProxyCommand=sh -c 'id'"}, {"rsync_username": "-oProxyCommand=id;#"}, {"host": "-oProxyCommand=id"}):
+        assert client.post("/api/connections/test", json={**base, **bad}).status_code == 422
+        assert client.post("/api/connections", json={**base, **bad}).status_code == 422
+    created = client.post("/api/connections", json=base)
+    assert created.status_code == 201
+    assert client.put(f"/api/connections/{created.json()['id']}", json={"rsync_host": "-oProxyCommand=id"}).status_code == 422

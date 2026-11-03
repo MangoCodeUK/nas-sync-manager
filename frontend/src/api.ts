@@ -60,7 +60,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = resp.statusText;
     try {
       const body = await resp.json();
-      detail = body.detail ?? detail;
+      // A 422 from FastAPI lists each field's problem; show their messages.
+      detail = Array.isArray(body.detail)
+        ? body.detail.map((d: { msg?: string }) => String(d.msg ?? "").replace(/^Value error, /, "")).join(" ")
+        : body.detail ?? detail;
     } catch {
       /* non-JSON error body */
     }
