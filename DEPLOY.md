@@ -76,6 +76,12 @@ sh deploy/update.sh
 
 Set `WEB_PORT=9090` in the NAS `.env` and re-run `sh deploy/update.sh`.
 
+## Home network only
+
+NAS Sync has no sign-in, so it listens on the NAS's LAN address alone: `BIND_ADDRESS=192.168.50.95` in the NAS `.env`
+(then `sh deploy/update.sh`). Without it the port is published on every interface, IPv6 included. If the NAS's address
+changes, change `BIND_ADDRESS` too, or the web container will not start.
+
 ## Backups
 
 Back up the SQLite data volume (also holds the encryption key) before risky changes:

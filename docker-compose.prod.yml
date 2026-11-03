@@ -45,8 +45,10 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-changeme}/nas-sync-manager-frontend:${IMAGE_TAG:-latest}
     logging: *logging
     container_name: nas-sync-frontend
+    # Published on BIND_ADDRESS only: set it in .env to the NAS's home-network address (e.g. 192.168.50.95) so the
+    # app answers on the LAN (and a VPN into it) and on no other interface, IPv6 included. It has no sign-in.
     ports:
-      - "${WEB_PORT:-8088}:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${WEB_PORT:-8088}:80"
     depends_on:
       backend:
         condition: service_healthy
