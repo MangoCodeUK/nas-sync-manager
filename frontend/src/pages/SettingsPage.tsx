@@ -83,7 +83,9 @@ export function SettingsPage() {
     try {
       const doc = JSON.parse(await file.text());
       const res = await api.importBackup(doc);
-      setBackupMsg(`Imported ${res.connections} connections and ${res.jobs} jobs.`);
+      const need = res.passwords_needed ?? [];
+      setBackupMsg(`Imported ${res.connections} connections and ${res.jobs} jobs.` +
+        (need.length ? ` Enter the password again on the Connections page for: ${need.join(", ")}.` : ""));
       setForm(await api.getSettings());
     } catch (err) {
       setBackupMsg(err instanceof ApiError ? err.message : "Import failed - invalid file?");
@@ -207,7 +209,8 @@ export function SettingsPage() {
         <fieldset>
           <legend>Backup &amp; Restore</legend>
           <p className="muted small">
-            Export settings, connections (encrypted) and jobs to a JSON file. Import replaces the
+            Export settings, connections and jobs to a JSON file. Passwords are not included: after
+            importing on another install, enter them again on the Connections page. Import replaces the
             current configuration.
           </p>
           <div className="form-actions">

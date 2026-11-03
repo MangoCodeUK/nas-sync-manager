@@ -1,9 +1,12 @@
 """Configuration backup / restore (FRD FR-029/030).
 
-Exports settings, connections (with encrypted passwords) and jobs as a JSON
-document. Restore replaces those tables and re-applies the settings. The Fernet
-key lives on the data volume, so a backup restored onto the same instance stays
-decryptable.
+Exports settings, connections and jobs as a JSON document. Connection
+passwords are left out, even encrypted (FR-029 allows either): a backup file
+travels, and the ciphertext is only as safe as the key file beside the
+database. Restore replaces those tables and re-applies the settings; a restored
+connection keeps the password already saved here for the same name, host and
+user, and any other must have its password entered again. A backup from before
+(with encrypted_password) still restores as it was.
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from app.models import JobRun, JobRunItem, NasConnection, PendingDeletion, SyncJ
 from app.services import settings_service
 
 _CONNECTION_FIELDS = [
-    "id", "name", "host", "protocol", "port", "username", "encrypted_password",
+    "id", "name", "host", "protocol", "port", "username",
     "root_path", "passive_mode", "timeout_seconds", "description",
 ]
 _JOB_FIELDS = [
@@ -53,6 +56,8 @@ def _filtered(data: dict, fields: list[str]) -> dict:
 
 
 def import_all(db: Session, doc: dict) -> dict:
+    # The passwords saved here, for connections the backup brings back unchanged in name, host and user.
+    saved = {(c.name, c.host, c.username): c.encrypted_password for c in db.query(NasConnection).all()}
     # Wipe child-to-parent so there are no dangling references.
     for table in (
         PendingDeletion.__table__,
@@ -63,8 +68,12 @@ def import_all(db: Session, doc: dict) -> dict:
     ):
         db.execute(table.delete())
 
+    missing = []
     for c in doc.get("connections", []):
-        db.add(NasConnection(**_filtered(c, _CONNECTION_FIELDS)))
+        password = c.get("encrypted_password") or saved.get((c.get("name"), c.get("host"), c.get("username"))) or ""
+        if not password:
+            missing.append(str(c.get("name") or ""))
+        db.add(NasConnection(**_filtered(c, _CONNECTION_FIELDS), encrypted_password=password))
     for j in doc.get("jobs", []):
         db.add(SyncJob(**_filtered(j, _JOB_FIELDS)))
     db.commit()
@@ -76,4 +85,5 @@ def import_all(db: Session, doc: dict) -> dict:
         "connections": len(doc.get("connections", [])),
         "jobs": len(doc.get("jobs", [])),
         "settings_updated": bool(doc.get("settings")),
+        "passwords_needed": missing,
     }

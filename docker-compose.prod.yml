@@ -56,7 +56,9 @@ services:
 
   # Restarts any container labelled autoheal=true when its healthcheck fails.
   autoheal:
-    image: willfarrell/autoheal:latest
+    # Pinned by digest (the 3 November 2026 image): a pull never changes it unannounced. To move on, pull
+    # willfarrell/autoheal:latest, check it, and put its digest here.
+    image: willfarrell/autoheal@sha256:deb31d41c5b91399ebb6bd3ceac97f5acd9ecd5fd9b2e2282c05c71fd531898c
     logging: *logging
     healthcheck:
       interval: 60s   # the image checks itself every 5 seconds

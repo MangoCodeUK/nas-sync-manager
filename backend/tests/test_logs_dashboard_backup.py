@@ -55,16 +55,26 @@ def test_backup_export_import_roundtrip(client, ftp_server):
     doc = client.post("/api/backup/export").json()
     assert len(doc["connections"]) == 2
     assert len(doc["jobs"]) == 1
-    assert "encrypted_password" in doc["connections"][0]
+    # No passwords in the file, not even encrypted.
+    assert all("password" not in k for c in doc["connections"] for k in c)
+
+    # Restored over the same install: the saved passwords are kept.
+    again = client.post("/api/backup/import", json=doc).json()
+    assert again["passwords_needed"] == []
+    assert client.post(f"/api/connections/{client.get('/api/connections').json()[0]['id']}/test").json()["ok"] is True
 
     # Wipe everything.
     client.post("/api/backup/import", json={"connections": [], "jobs": [], "settings": None})
     assert client.get("/api/connections").json() == []
     assert client.get("/api/jobs").json() == []
 
-    # Restore from the backup.
+    # Restore from the backup onto an empty install: every password must be entered again.
     result = client.post("/api/backup/import", json=doc).json()
     assert result["connections"] == 2 and result["jobs"] == 1
+    assert sorted(result["passwords_needed"]) == sorted(c["name"] for c in doc["connections"])
+    first = client.get("/api/connections").json()[0]["id"]
+    tested = client.post(f"/api/connections/{first}/test").json()
+    assert tested["ok"] is False and any("No password is saved" in m for m in tested["messages"])
     assert len(client.get("/api/connections").json()) == 2
     jobs = client.get("/api/jobs").json()
     assert len(jobs) == 1

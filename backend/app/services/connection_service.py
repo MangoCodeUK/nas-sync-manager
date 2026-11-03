@@ -55,11 +55,13 @@ def delete_connection(db: Session, conn: NasConnection) -> None:
 
 def build_client(conn: NasConnection) -> FtpClient:
     """Construct an FtpClient from a stored profile (decrypts the password)."""
+    # A connection restored from a backup has no password (backup_service): it signs in with none, and fails as any
+    # wrong password does, until one is entered.
     return FtpClient(
         host=conn.host,
         port=conn.port,
         username=conn.username,
-        password=crypto.decrypt(conn.encrypted_password),
+        password=crypto.decrypt(conn.encrypted_password) if conn.encrypted_password else "",
         protocol=conn.protocol,
         passive_mode=conn.passive_mode,
         timeout_seconds=conn.timeout_seconds,
@@ -82,7 +84,10 @@ def client_from_config(data: dict) -> FtpClient:
 
 
 def test_and_record(db: Session, conn: NasConnection) -> ConnectionTestResult:
-    result = build_client(conn).test_connection()
+    if not conn.encrypted_password:
+        result = ConnectionTestResult(messages=["No password is saved for this connection (restored from a backup): enter it and save."])
+    else:
+        result = build_client(conn).test_connection()
     conn.last_test_status = result.summary()
     conn.last_test_at = utcnow()
     db.commit()

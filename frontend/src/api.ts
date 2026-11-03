@@ -209,7 +209,7 @@ export const api = {
   },
   exportBackup: () => request<unknown>("/api/backup/export", { method: "POST" }),
   importBackup: (doc: unknown) =>
-    request<{ connections: number; jobs: number; settings_updated: boolean }>("/api/backup/import", {
+    request<{ connections: number; jobs: number; settings_updated: boolean; passwords_needed?: string[] }>("/api/backup/import", {
       method: "POST",
       body: JSON.stringify(doc),
     }),
