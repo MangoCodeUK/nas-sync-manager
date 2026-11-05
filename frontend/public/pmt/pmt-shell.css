@@ -1,9 +1,9 @@
 /* ProjectMangoTech brand shell: the shared colour tokens for both themes, the brand fonts, and the slim bar that
    every app shows at the top. Apps map their own variables onto the --pmt-* tokens so one switch themes everything.
    Dark is the default; <html data-theme="light"> flips the tokens (set by pmt-shell.js before first paint). */
-@font-face{font-family:Rajdhani;src:url('fonts/Rajdhani-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
-@font-face{font-family:Barlow;src:url('fonts/Barlow-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
-@font-face{font-family:Barlow;src:url('fonts/Barlow-SemiBold.ttf') format('truetype');font-weight:600;font-display:swap}
+@font-face{font-family:Rajdhani;src:url('fonts/Rajdhani-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:Barlow;src:url('fonts/Barlow-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Barlow;src:url('fonts/Barlow-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
 
 :root{
   --pmt-font-display:Rajdhani,'Arial Narrow',Arial,sans-serif;
@@ -39,8 +39,13 @@
 .pmt-bar-brand em{font-style:normal;color:var(--pmt-molten)}
 .pmt-bar-mark{display:block;width:22px;height:20px}
 .pmt-bar-sep{width:1px;height:18px;background:var(--pmt-line-2)}
-.pmt-bar-app{font-weight:600;color:var(--pmt-text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pmt-bar-app{flex:none;font-weight:600;color:var(--pmt-text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){.pmt-bar-app{flex:0 1 auto;min-width:0}}
 .pmt-bar-spacer{flex:1}
+.pmt-bar-sticky .pmt-bar{position:sticky;top:0}
+.pmt-bar-notice{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px dashed var(--pmt-line-2);border-radius:999px;color:var(--pmt-muted);font-size:12px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.pmt-bar-notice[hidden]{display:none}
+.pmt-bar-notice-dot{width:6px;height:6px;border-radius:50%;background:var(--pmt-molten);opacity:.8}
 .pmt-bar-home{font-weight:600;white-space:nowrap;padding:6px 8px;border-radius:4px}
 .pmt-bar-home:hover{color:var(--pmt-molten)}
 .pmt-bar-help{font-weight:600;white-space:nowrap;padding:6px 8px;border-radius:4px}
@@ -50,5 +55,55 @@
 .pmt-theme-toggle:hover{border-color:var(--pmt-molten);color:var(--pmt-molten)}
 .pmt-theme-toggle:focus-visible{outline:3px solid var(--pmt-molten);outline-offset:2px}
 .pmt-theme-toggle svg{flex:none}
-@media (max-width:560px){.pmt-bar-app,.pmt-theme-label{display:none}.pmt-bar-sep{display:none}.pmt-bar-inner{padding:0 10px;gap:8px}}
+/* Unified Search (Core ADR-043): the box in the middle of the bar, and the results under it */
+.pmt-search{position:relative;flex:0 1 480px;min-width:0}
+.pmt-search[hidden]{display:none}
+.pmt-search-box{position:relative;display:flex;align-items:center}
+.pmt-search-box>svg{position:absolute;left:11px;color:var(--pmt-muted);pointer-events:none}
+.pmt-search-input{width:100%;box-sizing:border-box;height:32px;padding:0 34px 0 34px;border:1px solid var(--pmt-line-2);border-radius:999px;background:var(--pmt-ink-2,rgba(255,255,255,.04));color:var(--pmt-text-strong);font:500 13.5px/1 var(--pmt-font-body);outline:none;transition:border-color .15s,background-color .15s}
+.pmt-search-input::placeholder{color:var(--pmt-muted)}
+.pmt-search-input:focus{border-color:var(--pmt-molten);background:var(--pmt-ink)}
+.pmt-search-input::-webkit-search-cancel-button{display:none}
+.pmt-search-key{position:absolute;right:10px;padding:1px 6px;border:1px solid var(--pmt-line-2);border-radius:4px;color:var(--pmt-muted);font:600 11px/1.4 var(--pmt-font-body)}
+.pmt-search-input:focus+.pmt-search-key{display:none}
+.pmt-search-toggle{display:none;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--pmt-line-2);border-radius:999px;background:transparent;color:var(--pmt-text-strong);cursor:pointer}
+.pmt-search-results{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);width:min(640px,calc(100vw - 24px));max-height:min(70vh,560px);overflow:auto;box-sizing:border-box;padding:6px;border:1px solid var(--pmt-line-2);border-radius:10px;background:var(--pmt-ink);box-shadow:var(--pmt-shadow);z-index:90}
+.pmt-search-results[hidden]{display:none}
+.pmt-search-group+.pmt-search-group{border-top:1px solid var(--pmt-line);margin-top:4px;padding-top:4px}
+.pmt-search-app{display:flex;align-items:center;justify-content:space-between;margin:0;padding:8px 10px 4px;font:700 11px/1.2 var(--pmt-font-body);letter-spacing:.07em;text-transform:uppercase;color:var(--pmt-muted)}
+.pmt-search-all{font-weight:600;letter-spacing:0;text-transform:none;color:var(--pmt-molten)!important}
+.pmt-search-row{display:flex;align-items:center;gap:8px;border-radius:6px}
+.pmt-search-row:hover,.pmt-search-row:focus-within{background:var(--pmt-accent-soft,rgba(255,122,24,.1))}
+.pmt-search-hit{flex:1;min-width:0;display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border-radius:6px;outline:none}
+.pmt-search-title{font-weight:600;color:var(--pmt-text-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmt-search-kind{justify-self:end;font-size:11px;font-weight:600;color:var(--pmt-muted);white-space:nowrap}
+.pmt-search-sub{grid-column:1/-1;font-size:12.5px;line-height:1.35;color:var(--pmt-text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmt-search-hit mark,.pmt-search-sub mark{background:none;color:var(--pmt-molten);font-weight:700}
+.pmt-search-actions{display:flex;gap:4px;padding-right:8px;flex:none}
+.pmt-search-action{padding:4px 8px;border:1px solid var(--pmt-line-2);border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;color:var(--pmt-text-strong)!important}
+.pmt-search-action:hover,.pmt-search-action:focus-visible{border-color:var(--pmt-molten);color:var(--pmt-molten)!important;outline:none}
+.pmt-search-hit:focus-visible{box-shadow:inset 0 0 0 2px var(--pmt-molten)}
+.pmt-search-note{margin:0;padding:12px 10px;color:var(--pmt-muted);font-size:13px}
+@media (max-width:900px){.pmt-search-key{display:none}}
+@media (max-width:760px){
+  .pmt-search{flex:0 0 auto}
+  .pmt-search-toggle{display:inline-flex}
+  .pmt-search-box{display:none}
+  .pmt-search-wide .pmt-search{position:absolute;left:8px;right:8px;top:6px;z-index:95}
+  .pmt-search-wide .pmt-search-toggle{display:none}
+  .pmt-search-wide .pmt-search-box{display:flex}
+  .pmt-search-wide .pmt-search-results{left:0;transform:none;width:100%}
+}
+@media (max-width:760px){.pmt-bar-notice-more{display:none}}
+@media (max-width:560px){.pmt-bar-app,.pmt-theme-label,.pmt-bar-home{display:none}.pmt-bar-sep{display:none}.pmt-bar-inner{padding:0 10px;gap:8px}}
+@media (max-width:560px){.pmt-account-name{display:none}.pmt-bar-notice{padding:3px 8px}}
+@media (max-width:480px){.pmt-bar-name{display:none}}
+/* A phone (360 pixels): every control stays, closer together, so the bar never pushes the page sideways. */
+@media (max-width:420px){.pmt-bar-inner{padding:0 6px;gap:4px}.pmt-bar-notice{padding:3px 6px;gap:4px}.pmt-bar-help{padding:6px 4px}.pmt-theme-toggle{padding:4px 6px}}
 @media print{.pmt-bar{display:none}}
+
+/* Personal settings from Core home (pmt-shell.js puts these on <html>): a larger size scales the page, as the browser's
+   zoom does; reduced motion stops animations, transitions and smooth scrolling. */
+html.pmt-size-large body{zoom:1.12}
+html.pmt-size-larger body{zoom:1.25}
+html.pmt-reduce-motion *,html.pmt-reduce-motion *::before,html.pmt-reduce-motion *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}

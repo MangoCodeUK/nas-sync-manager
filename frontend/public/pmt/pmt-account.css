@@ -8,7 +8,7 @@
 .pmt-account-button:hover,.pmt-account-button[aria-expanded="true"]{border-color:var(--pmt-molten,var(--molten))}
 .pmt-account-button:focus-visible,.pmt-account-signin:focus-visible,.pmt-account-menu a:focus-visible,.pmt-account-signout:focus-visible{outline:3px solid var(--pmt-molten,var(--molten));outline-offset:2px}
 .pmt-account-initials{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--pmt-molten,var(--molten));color:#101216;font:700 12px/1 var(--pmt-font-display,var(--font-display,Rajdhani,sans-serif));letter-spacing:.04em}
-.pmt-account-name{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmt-account-name{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pmt-account-caret{flex:none;opacity:.8}
 .pmt-account-menu{position:absolute;top:calc(100% + 8px);right:0;z-index:80;width:260px;max-width:calc(100vw - 24px);padding:6px;background:var(--pmt-panel,var(--panel));border:1px solid var(--pmt-line,var(--line));border-radius:6px;box-shadow:var(--pmt-shadow,0 18px 40px rgba(0,0,0,.4));text-align:left}
 .pmt-account-menu[hidden]{display:none}
@@ -18,5 +18,31 @@
 .pmt-account-menu a,.pmt-account-signout{display:block;width:100%;box-sizing:border-box;padding:10px;border:0;border-radius:4px;background:transparent;color:var(--pmt-text-strong,var(--silver))!important;font:inherit;text-align:left;text-decoration:none;cursor:pointer;box-shadow:none!important}
 .pmt-account-menu a:hover,.pmt-account-signout:hover{background:var(--pmt-accent-soft,var(--hot-soft));color:var(--pmt-text-strong,var(--silver))!important}
 .pmt-account-signout{margin-top:4px;border-top:1px solid var(--pmt-line,var(--line));border-radius:0 0 4px 4px;color:var(--pmt-text-soft,var(--steel))!important}
+.pmt-account-roles{display:grid;gap:2px;padding:4px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--pmt-line,var(--line))}
+.pmt-account-label{padding:6px 10px 4px;color:var(--pmt-muted,var(--muted));font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.pmt-account-role{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:8px 10px;border:0;border-radius:4px;background:transparent;color:var(--pmt-text-strong,var(--silver));font:inherit;font-weight:500;text-align:left;cursor:pointer}
+.pmt-account-role::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;border:2px solid var(--pmt-line-2,var(--gunmetal))}
+.pmt-account-role[aria-pressed="true"]{font-weight:700;cursor:default}
+.pmt-account-role[aria-pressed="true"]::before{background:var(--pmt-molten,var(--molten));border-color:var(--pmt-molten,var(--molten))}
+.pmt-account-role:hover:not([aria-pressed="true"]){background:var(--pmt-accent-soft,var(--hot-soft))}
+.pmt-account-role:focus-visible{outline:3px solid var(--pmt-molten,var(--molten));outline-offset:2px}
+.pmt-account-role:disabled{opacity:.6}
 .pmt-account-note{margin:4px 10px 8px;color:var(--pmt-text-soft,var(--steel));font-weight:400;font-size:13px;line-height:1.45}
+/* The application switcher and the bell (Core home), beside the account menu in an application's bar */
+.pmt-switch{position:relative;display:inline-flex;align-items:center;min-height:28px;font:600 14px/1 var(--pmt-font-body,var(--font-body,Barlow,sans-serif))}
+.pmt-switch[hidden],.pmt-bell[hidden]{display:none}
+.pmt-switch-button{padding:2px 8px;color:var(--pmt-text-strong,var(--silver))}
+.pmt-switch-menu{width:280px;max-height:min(70vh,520px);overflow:auto}
+.pmt-switch-menu a{display:flex!important;justify-content:space-between;align-items:center;gap:10px}
+.pmt-switch-menu a small{color:var(--pmt-muted,var(--muted));font-weight:400;font-size:12px}
+.pmt-switch-menu a[aria-current="page"]{background:var(--pmt-accent-soft,var(--hot-soft))}
+.pmt-switch-home{border-bottom:1px solid var(--pmt-line,var(--line));border-radius:4px 4px 0 0!important;margin-bottom:4px}
+.pmt-bell{display:inline-flex}
+.pmt-bell-link{position:relative;display:inline-grid;place-items:center;width:30px;height:30px;border:1px solid var(--pmt-line-2,var(--gunmetal));border-radius:999px;color:var(--pmt-text-strong,var(--silver))!important}
+.pmt-bell-link:hover{border-color:var(--pmt-molten,var(--molten))}
+.pmt-bell-link:focus-visible{outline:3px solid var(--pmt-molten,var(--molten));outline-offset:2px}
+.pmt-bell-count{position:absolute;top:-5px;right:-7px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--pmt-molten,var(--molten));color:#101216;font:700 11px/17px var(--pmt-font-body,sans-serif);text-align:center}
 @media (max-width:560px){.pmt-account-name{display:none}.pmt-account-button{padding-right:8px}}
+.pmt-account-org-now{display:grid;gap:0;padding:2px 0 10px;margin-bottom:4px;border-bottom:1px solid var(--pmt-line,var(--line))}
+.pmt-account-org-now strong{padding:0 10px;font-weight:650;color:var(--pmt-text-strong,var(--silver))}
+@media (max-width:420px){.pmt-account-button{gap:4px;padding:2px 6px 2px 2px}}
